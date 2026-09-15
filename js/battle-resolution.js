@@ -1,5 +1,5 @@
 window.BattleResolution=(()=>{
-  function createContext({map,initiator,target,skill,actions=[]}){
+  function createContext({map,initiator,target,skill,actions=[],reaction=null}){
     const primary={
       id:"primary",
       role:"INITIATOR",
@@ -17,17 +17,29 @@ window.BattleResolution=(()=>{
       }
     });
 
-    return {map,initiator,target,skill,participants,actions:[primary,...actions]};
+    return {
+      map,
+      initiator,
+      target,
+      skill,
+      reaction,
+      participants,
+      actions:[primary,...actions]
+    };
   }
 
   function distance(a,b){
     return Math.abs(a.x-b.x)+Math.abs(a.y-b.y);
   }
 
+  function isSingleTarget(skill){
+    return (skill?.targetType||"SINGLE")==="SINGLE";
+  }
+
   function supportSkills({ally,target,canUseSkill}){
     return SkillDatabase.list(ally.character.skills).filter(skill=>{
       if(skill.support!==true||skill.target!=="ENEMY") return false;
-      if((skill.targetType||"SINGLE")!=="SINGLE") return false;
+      if(!isSingleTarget(skill)) return false;
       if(canUseSkill&&!canUseSkill(ally,skill)) return false;
 
       const r=skill.range||{min:1,max:1};
@@ -65,6 +77,55 @@ window.BattleResolution=(()=>{
     };
   }
 
+  // Counter is a normal queued attack action. It is deliberately not a
+  // special damage formula: SPD + Skill Speed decides its place in queue.
+  function counterSkills({defender,attacker,canUseSkill}){
+    if(!defender?.alive||!attacker?.alive) return [];
+
+    return SkillDatabase.list(defender.character.skills).filter(skill=>{
+      if(skill.target!=="ENEMY") return false;
+      if(!isSingleTarget(skill)) return false;
+      if(canUseSkill&&!canUseSkill(defender,skill)) return false;
+
+      const r=skill.range||{min:1,max:1};
+      const d=distance(defender,attacker);
+      return d>=r.min&&d<=r.max;
+    });
+  }
+
+  function createCounterAction(defender,attacker,skill){
+    return {
+      id:`counter-${defender.id}`,
+      role:"COUNTER",
+      actor:defender,
+      target:attacker,
+      skill
+    };
+  }
+
+  // Formal reaction descriptor. DEFENSE and EVADE are recorded here now,
+  // but their numeric outcome is intentionally not invented in this step.
+  // They will be resolved by the defense-method layer once its data is set.
+  function createReaction(type,options={}){
+    if(!["COUNTER","DEFENSE","EVADE"].includes(type)){
+      throw new Error(`Unknown reaction type: ${type}`);
+    }
+    return {type,...options};
+  }
+
+  function prepareSingleTargetReaction({
+    defender,
+    attacker,
+    canUseSkill
+  }){
+    return {
+      defender,
+      attacker,
+      counterSkills:counterSkills({defender,attacker,canUseSkill}),
+      choices:["COUNTER","DEFENSE","EVADE"]
+    };
+  }
+
   function actionSpeed(action){
     return BattleEngine.actionSpeed(action.actor.character,action.skill);
   }
@@ -82,6 +143,8 @@ window.BattleResolution=(()=>{
 
     for(const action of queue){
       const {actor,target,skill}=action;
+
+      // A faster action may have killed either side already.
       if(!actor.alive||!target.alive) continue;
       if(hooks.canUseSkill&&!hooks.canUseSkill(actor,skill)) continue;
 
@@ -105,10 +168,22 @@ window.BattleResolution=(()=>{
   }
 
   function resolve(options,hooks={}){
+    const actions=[...(options.actions||[])];
+
+    // Counter joins the same queue as initiator/support actions.
+    if(options.reaction?.type==="COUNTER"&&options.reaction.skill){
+      actions.push(createCounterAction(
+        options.target,
+        options.initiator,
+        options.reaction.skill
+      ));
+    }
+
     const context=createContext({
       ...options,
-      actions:[...(options.actions||[])]
+      actions
     });
+
     return execute(context,hooks);
   }
 
@@ -118,8 +193,13 @@ window.BattleResolution=(()=>{
     execute,
     resolve,
     actionSpeed,
+    isSingleTarget,
     supportSkills,
     supportCandidates,
-    createSupportAction
+    createSupportAction,
+    counterSkills,
+    createCounterAction,
+    createReaction,
+    prepareSingleTargetReaction
   };
 })();
