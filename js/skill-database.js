@@ -13,14 +13,62 @@ window.SKILLS={
   magic_bolt:{id:"magic_bolt",name:"魔力彈",category:"MAGIC",weapon:"staff",power:1,range:{min:2,max:4},attackType:"INHERIT",element:"INHERIT",speed:0,target:"ENEMY",support:true,resource:{type:"UNLIMITED"},affixes:[]}
 };
 
+// Passive abilities are data, just like active skills.
+// Existing character passive IDs remain valid even if they have no entry here yet.
+window.PASSIVES={
+  GUARDIAN_INSTINCT:{
+    id:"GUARDIAN_INSTINCT",
+    name:"守護本能",
+    category:"PASSIVE",
+    defenseProfiles:[{
+      id:"guardian_instinct_guard",
+      method:"GUARD",
+      name:"守護本能",
+      canGuardAlly:true,
+      vs:{
+        SLASH:{damageMultiplier:.70},
+        PIERCE:{damageMultiplier:.75},
+        SHOT:{damageMultiplier:.70},
+        STRIKE:{damageMultiplier:.80},
+        MAGIC:{damageMultiplier:.90}
+      }
+    }]
+  }
+};
+
 window.SkillDatabase=(()=>{
   function get(id){
     const skill=SKILLS[id];
     if(!skill) throw new Error("Unknown skill: "+id);
     return skill;
   }
+
   function list(ids){
     return (ids||[]).map(get);
   }
-  return {get,list};
+
+  function getPassive(id){
+    return PASSIVES[id]||null;
+  }
+
+  function passiveList(ids){
+    return (ids||[]).map(getPassive).filter(Boolean);
+  }
+
+  function passiveDefenseProfiles(ids){
+    const profiles=[];
+    for(const passive of passiveList(ids)){
+      for(const profile of passive.defenseProfiles||[]){
+        profiles.push({
+          ...profile,
+          sourceId:passive.id,
+          sourceName:passive.name,
+          sourceType:"PASSIVE"
+        });
+      }
+    }
+    return profiles;
+  }
+
+  return {get,list,getPassive,passiveList,passiveDefenseProfiles};
 })();

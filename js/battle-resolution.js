@@ -98,8 +98,17 @@ window.BattleResolution=(()=>{
     return {type,...options};
   }
 
+  function passiveDefenseProfiles(character){
+    return SkillDatabase.passiveDefenseProfiles
+      ?SkillDatabase.passiveDefenseProfiles(character?.passives)
+      :[];
+  }
+
   function defenseMethods(defender){
-    return EquipmentDatabase.defenseProfiles(defender?.character);
+    return [
+      ...EquipmentDatabase.defenseProfiles(defender?.character),
+      ...passiveDefenseProfiles(defender?.character)
+    ];
   }
 
   function guardProfiles(unit){
