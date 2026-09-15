@@ -23,7 +23,7 @@
 
   function createSkillResources(character){
     const resources={};
-    character.skills.forEach(skill=>{
+    SkillDatabase.list(character.skills).forEach(skill=>{
       const resource=skill.resource||{type:"UNLIMITED"};
       if(resource.type==="USES"){
         resources[skill.id]={type:"USES",remaining:Number(resource.max||0),max:Number(resource.max||0)};
@@ -358,7 +358,7 @@
       return;
     }
 
-    selected.character.skills.forEach(skill=>{
+    selected.SkillDatabase.list(character.skills).forEach(skill=>{
       const button=document.createElement("button");
       const range=TacticalEngine.range(skill);
       const usable=canUseSkill(selected,skill);
