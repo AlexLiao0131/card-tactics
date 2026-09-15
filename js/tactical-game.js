@@ -4,6 +4,8 @@
   const PHASE={PLAYER:"PLAYER_TURN",ENEMY:"ENEMY_TURN",ENDED:"MATCH_ENDED"};
 
   let map,units,selected,mode,selectedSkill,logs,round,phase,matchResult,stage,stageState;
+  let pendingEngagement=null;
+  let supportSelection=new Map();
 
   function createMap(){
     return MapDatabase.createMap(stage.mapId);
@@ -30,6 +32,7 @@
       alive:true,
       moved:false,
       acted:false,
+      waited:false,
       skillResources:createSkillResources(character)
     };
   }
@@ -46,6 +49,8 @@
 
     selected=null;
     selectedSkill=null;
+    pendingEngagement=null;
+    supportSelection=new Map();
     mode="idle";
     logs=["Round 1｜我方回合開始。"];
     round=1;
@@ -95,6 +100,7 @@
     living(team).forEach(u=>{
       u.moved=false;
       u.acted=false;
+      u.waited=false;
     });
   }
 
@@ -124,9 +130,19 @@
     return "∞";
   }
 
+  function targetType(skill){
+    return skill?.targetType||"SINGLE";
+  }
+
+  function clearEngagement(){
+    pendingEngagement=null;
+    supportSelection=new Map();
+  }
+
   function clearSelection(){
     selected=null;
     selectedSkill=null;
+    clearEngagement();
     mode="idle";
   }
 
@@ -178,10 +194,12 @@
     runEnemyPhase();
   }
 
-  function finishUnit(unit,reason){
+  function finishUnit(unit,reason,{waited=false}={}){
     unit.moved=true;
     unit.acted=true;
+    unit.waited=waited;
     selectedSkill=null;
+    clearEngagement();
     mode="inspect";
     logs.push(`${unit.character.name} ${reason}`);
     if(allFinished(TEAM.PLAYER)){
@@ -193,7 +211,7 @@
     battlefield.innerHTML="";
 
     const reachable=
-      selected&&phase===PHASE.PLAYER&&!selected.acted&&mode==="move"
+      selected&&phase===PHASE.PLAYER&&!selected.acted&&!selected.moved&&mode==="command"
         ?TacticalEngine.reachable(map,units,selected)
         :new Map();
 
@@ -236,19 +254,21 @@
   function handleTileClick(tile,unit,reachable,targets){
     if(phase!==PHASE.PLAYER||matchResult) return;
 
+    if(mode==="support-select") return;
+
     if(unit&&unit.team===TEAM.PLAYER){
       selected=unit;
       selectedSkill=null;
+      clearEngagement();
       mode=unit.acted?"inspect":"command";
       render();
       return;
     }
 
-    if(selected&&!selected.acted&&mode==="move"&&!unit&&reachable.has(tile.x+","+tile.y)){
+    if(selected&&!selected.acted&&mode==="command"&&!selected.moved&&!unit&&reachable.has(tile.x+","+tile.y)){
       selected.x=tile.x;
       selected.y=tile.y;
       selected.moved=true;
-      mode="command";
       logs.push(`${selected.character.name} 移動完成。`);
       stageEvent({type:"ENTER_TILE",unitId:selected.id,characterId:selected.character.id,x:selected.x,y:selected.y,team:"PLAYER"});
       render();
@@ -256,20 +276,66 @@
     }
 
     if(selected&&!selected.acted&&mode==="attack"&&unit&&targets.includes(unit)){
-      performAttack(selected,unit,selectedSkill);
+      prepareAttack(selected,unit,selectedSkill);
     }
   }
 
-  function performAttack(attacker,defender,skill){
+  function prepareAttack(attacker,defender,skill){
     if(!canUseSkill(attacker,skill)) return;
 
-    const supportPreview=BattleResolution.supportCandidates({units,initiator:attacker,target:defender,canUseSkill});
-    if(supportPreview.length){
-      logs.push(`支援參戰：${supportPreview.map(x=>x.ally.character.name+"["+x.skill.name+"]").join("、")}`);
+    if(targetType(skill)!=="SINGLE"){
+      executeEngagement(attacker,defender,skill,[]);
+      return;
     }
 
+    const candidates=BattleResolution.supportCandidates({
+      units,
+      initiator:attacker,
+      target:defender,
+      canUseSkill
+    });
+
+    if(!candidates.length){
+      executeEngagement(attacker,defender,skill,[]);
+      return;
+    }
+
+    pendingEngagement={attacker,defender,skill,candidates};
+    supportSelection=new Map();
+    mode="support-select";
+    logs.push(`可選支援：${candidates.map(x=>x.ally.character.name).join("、")}`);
+    render();
+  }
+
+  function selectedSupportActions(){
+    if(!pendingEngagement) return [];
+    const actions=[];
+
+    pendingEngagement.candidates.forEach(({ally},index)=>{
+      const skill=supportSelection.get(ally.id);
+      if(skill){
+        actions.push(BattleResolution.createSupportAction(
+          ally,
+          pendingEngagement.defender,
+          skill,
+          index
+        ));
+      }
+    });
+
+    return actions;
+  }
+
+  function confirmEngagement(){
+    if(!pendingEngagement) return;
+    const {attacker,defender,skill}=pendingEngagement;
+    const actions=selectedSupportActions();
+    executeEngagement(attacker,defender,skill,actions);
+  }
+
+  function executeEngagement(attacker,defender,skill,actions){
     const engagement=BattleResolution.resolve(
-      {map,units,initiator:attacker,target:defender,skill},
+      {map,units,initiator:attacker,target:defender,skill,actions},
       {
         canUseSkill,
         consumeSkill,
@@ -291,12 +357,19 @@
       }
     );
 
-    if(!engagement.results.length) return;
+    if(!engagement.results.length){
+      clearEngagement();
+      mode="command";
+      render();
+      return;
+    }
 
     attacker.moved=true;
     attacker.acted=true;
+    attacker.waited=false;
 
     selectedSkill=null;
+    clearEngagement();
     mode="inspect";
 
     if(checkMatchEnd()){
@@ -332,6 +405,54 @@
     skillBar.appendChild(button);
   }
 
+  function renderSupportSelection(){
+    const {attacker,defender,skill,candidates}=pendingEngagement;
+
+    tacticalInfo.textContent=
+      `交戰準備｜${attacker.character.name} → ${defender.character.name}\n`+
+      `${skill.name}\n`+
+      `選擇要參戰的支援角色與技能；不選就不消耗資源。`;
+
+    candidates.forEach(({ally,skills})=>{
+      const row=document.createElement("div");
+      row.className="support-choice";
+
+      const title=document.createElement("div");
+      title.textContent=`${ally.character.name}${ally.acted?"｜已完成主動行動":""}`;
+      row.appendChild(title);
+
+      const none=document.createElement("button");
+      none.textContent="不支援";
+      none.className="action-button";
+      none.onclick=()=>{
+        supportSelection.delete(ally.id);
+        render();
+      };
+      row.appendChild(none);
+
+      skills.forEach(skill=>{
+        const button=document.createElement("button");
+        const chosen=supportSelection.get(ally.id)===skill;
+        button.textContent=`${chosen?"✓ ":""}${skill.name}｜${resourceLabel(ally,skill)}`;
+        button.className="action-button";
+        button.onclick=()=>{
+          supportSelection.set(ally.id,skill);
+          render();
+        };
+        row.appendChild(button);
+      });
+
+      skillBar.appendChild(row);
+    });
+
+    addActionButton("開始交戰",confirmEngagement);
+    addActionButton("返回",()=>{
+      clearEngagement();
+      mode="attack";
+      render();
+    });
+  }
+
   function renderPanel(){
     skillBar.innerHTML="";
 
@@ -356,22 +477,25 @@
     }
 
     const tile=TacticalEngine.tile(map,selected.x,selected.y);
-    const actionState=selected.acted?"已行動":(selected.moved?"已移動 / 可攻擊":"可移動 / 可行動");
+    const actionState=selected.acted
+      ?(selected.waited?"已待機":"已完成主動行動 / 可支援")
+      :(selected.moved?"已移動 / 可攻擊":"可移動 / 可行動");
 
     tacticalInfo.textContent=
       `${selected.character.name}｜HP ${selected.hp}/${selected.character.combat.hp}｜MOVE ${selected.character.combat.move}\n`+
       `(${selected.x},${selected.y}) ${TERRAINS[tile.terrain].name} 高度${tile.elevation}\n`+
       `狀態：${actionState}`;
 
+    if(mode==="support-select"&&pendingEngagement){
+      renderSupportSelection();
+      return;
+    }
+
     if(selected.acted) return;
 
     if(mode==="command"){
       if(!selected.moved){
-        addActionButton("移動",()=>{
-          selectedSkill=null;
-          mode="move";
-          render();
-        });
+        tacticalInfo.textContent+="\n可直接點亮起的格子移動，或直接選擇下方指令。";
       }
 
       addActionButton("攻擊",()=>{
@@ -397,14 +521,9 @@
       });
 
       addActionButton("待機",()=>{
-        finishUnit(selected,"待機，行動結束。");
+        finishUnit(selected,"待機，行動結束。",{waited:true});
         render();
       });
-      return;
-    }
-
-    if(mode==="move"){
-      tacticalInfo.textContent+="\\n請選擇可移動格；取消可返回角色指令。";
       return;
     }
 
@@ -420,7 +539,7 @@
     if(mode==="attack-menu"||mode==="special-menu"){
       const menuName=mode==="special-menu"?"魔法／特殊技能":"攻擊";
       if(!shownSkills.length){
-        tacticalInfo.textContent+=`\\n${menuName}：目前沒有可用技能。`;
+        tacticalInfo.textContent+=`\n${menuName}：目前沒有可用技能。`;
       }
 
       shownSkills.forEach(skill=>{
@@ -448,16 +567,14 @@
 
     if(mode==="attack"&&selectedSkill){
       const range=TacticalEngine.range(selectedSkill);
-      tacticalInfo.textContent+=`\\n${selectedSkill.name}｜射程 ${range.min}-${range.max}｜請選擇目標。`;
+      tacticalInfo.textContent+=`\n${selectedSkill.name}｜射程 ${range.min}-${range.max}｜請選擇目標。`;
       addActionButton("返回",()=>{
         const previousSkill=selectedSkill;
         selectedSkill=null;
         mode=isSpecial(previousSkill)?"special-menu":"attack-menu";
         render();
       });
-      return;
     }
-
   }
 
   resetMap.onclick=resetBattle;
