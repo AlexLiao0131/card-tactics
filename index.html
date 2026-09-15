@@ -8,48 +8,31 @@
 </head>
 <body>
 <main>
-  <h1>Card Tactics — Tactical Prototype v0.2</h1>
-  <p class="sub">5 人戰棋｜Turn Flow｜MOVE｜WAIT｜技能資源｜勝敗判定｜既有 Battle Engine</p>
-
+  <h1>Card Tactics — Tactical Prototype v0.3</h1>
+  <p class="sub">5 人戰棋｜Skill Database v1｜Turn Flow｜MOVE｜WAIT｜技能資源｜勝敗判定｜既有 Battle Engine</p>
   <section class="card">
     <div id="turnStatus" class="turn-status"></div>
-
     <div class="toolbar">
       <button id="resetMap">重置戰場</button>
       <button id="cancelSelect">取消選擇</button>
       <button id="endTurn">結束我方回合</button>
     </div>
-
     <div class="legend">藍框＝可移動　紅框＝可攻擊　🌲森林　▲高地　≈水域　■障礙</div>
     <div id="battlefield" class="battlefield"></div>
     <div id="tacticalInfo" class="panel">點選我方角色開始。</div>
     <div id="skillBar" class="skillbar"></div>
     <div id="battleLog" class="panel"></div>
   </section>
-
   <details>
     <summary>原 Battle Engine 測試介面</summary>
     <div class="grid">
-      <section class="card">
-        <h2>攻擊方</h2>
-        <select id="attacker"></select>
-        <select id="skill"></select>
-        <div id="attackerInfo"></div>
-      </section>
-      <section class="card">
-        <h2>防禦方</h2>
-        <select id="defender"></select>
-        <div id="defenderInfo"></div>
-      </section>
+      <section class="card"><h2>攻擊方</h2><select id="attacker"></select><select id="skill"></select><div id="attackerInfo"></div></section>
+      <section class="card"><h2>防禦方</h2><select id="defender"></select><div id="defenderInfo"></div></section>
     </div>
-    <section class="card">
-      <label><input id="forceCrit" type="checkbox"> 強制暴擊</label>
-      <button id="testBtn">執行戰鬥測試</button>
-      <div id="result"></div>
-    </section>
+    <section class="card"><label><input id="forceCrit" type="checkbox"> 強制暴擊</label><button id="testBtn">執行戰鬥測試</button><div id="result"></div></section>
   </details>
 </main>
-
+<script src="js/skill-database.js"></script>
 <script src="js/character-database.js"></script>
 <script src="js/battle-engine.js"></script>
 <script src="js/tactical-engine.js"></script>
