@@ -12,6 +12,7 @@
   let pendingEnemyAttack=null;
   let pendingReactionType=null;
   let selectedGuardian=null;
+  let selectedGuardInterception=null;
 
   function createMap(){
     return MapDatabase.createMap(stage.mapId);
@@ -61,6 +62,7 @@
     pendingEnemyAttack=null;
     pendingReactionType=null;
     selectedGuardian=null;
+    selectedGuardInterception=null;
     mode="idle";
     logs=["Round 1｜我方回合開始。"];
     round=1;
@@ -153,6 +155,7 @@
     pendingEnemyAttack=null;
     pendingReactionType=null;
     selectedGuardian=null;
+    selectedGuardInterception=null;
   }
 
   function clearSelection(){
@@ -353,17 +356,17 @@
     );
   }
 
-  function executeEnemyAttack(reaction=null){
+  function executeEnemyAttack(reaction=null,interception=null){
     if(!pendingEnemyAttack) return;
     const {attacker,defender,skill}=pendingEnemyAttack;
-    const guardian=reaction?.guardian||null;
+    const guardian=interception?.type==="GUARD_ALLY"?interception.guardian:null;
 
     if(guardian){
       logs.push(`${guardian.character.name} 援護 ${defender.character.name}，承接 ${attacker.character.name} 的攻擊。`);
     }
 
     const engagement=BattleResolution.resolve(
-      {map,units,initiator:attacker,target:defender,skill,actions:[],reaction,guardian},
+      {map,units,initiator:attacker,target:defender,skill,actions:[],reaction,interception},
       {
         canUseSkill,
         consumeSkill,
@@ -398,6 +401,7 @@
 
   function chooseGuardian(guardian){
     selectedGuardian=guardian;
+    selectedGuardInterception=null;
     pendingReactionType=null;
     mode="enemy-guard-reaction";
     render();
@@ -743,6 +747,7 @@
 
     addActionButton("返回",()=>{
       selectedGuardian=null;
+      selectedGuardInterception=null;
       mode="enemy-reaction";
       render();
     });
@@ -753,44 +758,66 @@
     const guardian=selectedGuardian;
     if(!guardian?.alive){
       selectedGuardian=null;
+      selectedGuardInterception=null;
       mode="enemy-reaction";
       render();
       return;
     }
 
-    const guardianMethods=BattleResolution.defenseMethods(guardian);
+    const guardianMethods=BattleResolution.guardProfiles(guardian);
     const counterSkills=BattleResolution.counterSkills({
       defender,
       attacker,
       canUseSkill
     });
 
+    if(!selectedGuardInterception){
+      tacticalInfo.textContent=
+        `援護防禦｜${guardian.character.name} 保護 ${defender.character.name}\n`+
+        `${attacker.character.name}｜${skill.name}\n`+
+        `請選擇援護者的防禦方式。僅顯示具有 canGuardAlly 的方式。`;
+
+      guardianMethods.forEach(method=>{
+        addActionButton(
+          `${method.name}｜${method.sourceName||method.method}`,
+          ()=>{
+            selectedGuardInterception=BattleResolution.createGuardInterception(guardian,method.id);
+            render();
+          }
+        );
+      });
+
+      addActionButton("返回",()=>{
+        selectedGuardian=null;
+        selectedGuardInterception=null;
+        mode="enemy-guard-select";
+        render();
+      });
+      return;
+    }
+
     tacticalInfo.textContent=
       `援護成立｜${guardian.character.name} 保護 ${defender.character.name}\n`+
       `${attacker.character.name}｜${skill.name}\n`+
-      `攻擊將完整轉向援護者；援護者不能代替目標迴避。`;
+      `攻擊完整轉向援護者；原目標仍可選擇是否反擊。`;
 
-    guardianMethods.forEach(method=>{
-      addActionButton(
-        `${method.name}｜${method.sourceName||method.method}`,
-        ()=>executeEnemyAttack(
-          BattleResolution.createReaction("DEFENSE",{methodId:method.id,guardian})
-        )
-      );
-    });
+    addActionButton(
+      "援護承受｜原目標不反擊",
+      ()=>executeEnemyAttack(null,selectedGuardInterception)
+    );
 
     counterSkills.forEach(counterSkill=>{
       addActionButton(
         `原目標反擊｜${counterSkill.name}｜${resourceLabel(defender,counterSkill)}`,
         ()=>executeEnemyAttack(
-          BattleResolution.createReaction("COUNTER",{skill:counterSkill,guardian})
+          BattleResolution.createReaction("COUNTER",{skill:counterSkill}),
+          selectedGuardInterception
         )
       );
     });
 
-    addActionButton("返回",()=>{
-      selectedGuardian=null;
-      mode="enemy-guard-select";
+    addActionButton("返回防禦方式",()=>{
+      selectedGuardInterception=null;
       render();
     });
   }

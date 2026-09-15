@@ -2,9 +2,12 @@ window.BattleResolution=(()=>{
   const ACTIVE_EVADE_PENALTY=20;
   const GRAZE_DAMAGE_MULTIPLIER=.5;
 
-  function createContext({map,initiator,target,skill,actions=[],reaction=null,guardian=null}){
+  function createContext({map,initiator,target,skill,actions=[],reaction=null,interception=null}){
     const originalTarget=target;
-    const effectiveTarget=guardian?.alive?guardian:target;
+    const guardian=interception?.type==="GUARD_ALLY"&&interception.guardian?.alive
+      ?interception.guardian
+      :null;
+    const effectiveTarget=guardian||originalTarget;
     const primary={
       id:"primary",
       role:"INITIATOR",
@@ -27,7 +30,8 @@ window.BattleResolution=(()=>{
       initiator,
       target:effectiveTarget,
       originalTarget,
-      guardian:guardian?.alive?guardian:null,
+      guardian,
+      interception:guardian?interception:null,
       skill,
       reaction,
       participants,
@@ -107,12 +111,18 @@ window.BattleResolution=(()=>{
     const candidates=[];
     for(const guardian of units||[]){
       if(!guardian.alive||guardian.id===target.id||guardian.team!==target.team) continue;
-      const orthogonal=distance(guardian,target)===1;
-      if(!orthogonal) continue;
+      if(distance(guardian,target)!==1) continue;
       const profiles=guardProfiles(guardian);
       if(profiles.length) candidates.push({guardian,profiles});
     }
     return candidates;
+  }
+
+  function createGuardInterception(guardian,methodId){
+    if(!guardian?.alive) throw new Error("Guard Ally requires a living guardian.");
+    const profile=guardProfiles(guardian).find(item=>item.id===methodId);
+    if(!profile) throw new Error(`Invalid Guard Ally method: ${methodId}`);
+    return {type:"GUARD_ALLY",guardian,methodId:profile.id};
   }
 
   function prepareSingleTargetReaction({defender,attacker,canUseSkill}){
@@ -216,11 +226,20 @@ window.BattleResolution=(()=>{
 
   function resolveAction(context,action){
     const {actor,target,skill}=action;
-    const reaction=context.reaction;
-    if(!isPrimaryIncomingAction(context,action)||!reaction){
+    if(!isPrimaryIncomingAction(context,action)){
       return TacticalEngine.resolve(context.map,actor,target,skill);
     }
-    if(reaction.type==="EVADE"&&!context.guardian){
+    if(context.interception?.type==="GUARD_ALLY"){
+      return resolveDefense(context.map,actor,target,skill,{
+        type:"DEFENSE",
+        methodId:context.interception.methodId
+      });
+    }
+    const reaction=context.reaction;
+    if(!reaction){
+      return TacticalEngine.resolve(context.map,actor,target,skill);
+    }
+    if(reaction.type==="EVADE"){
       return resolveEvade(context.map,actor,target,skill);
     }
     if(reaction.type==="DEFENSE"){
@@ -253,7 +272,6 @@ window.BattleResolution=(()=>{
   function resolve(options,hooks={}){
     const actions=[...(options.actions||[])];
     if(options.reaction?.type==="COUNTER"&&options.reaction.skill){
-      // Guard Ally redirects the incoming action only. The original target still owns Counter.
       actions.push(createCounterAction(options.target,options.initiator,options.reaction.skill));
     }
     const context=createContext({...options,actions});
@@ -264,6 +282,6 @@ window.BattleResolution=(()=>{
     createContext,buildQueue,execute,resolve,actionSpeed,isSingleTarget,
     supportSkills,supportCandidates,createSupportAction,counterSkills,
     createCounterAction,createReaction,defenseMethods,guardProfiles,
-    guardCandidates,prepareSingleTargetReaction
+    guardCandidates,createGuardInterception,prepareSingleTargetReaction
   };
 })();
