@@ -3,7 +3,7 @@
   const TEAM={PLAYER:"P",ENEMY:"E"};
   const PHASE={PLAYER:"PLAYER_TURN",ENEMY:"ENEMY_TURN",ENDED:"MATCH_ENDED"};
 
-  let map,units,selected,mode,selectedSkill,previewTarget,logs,round,phase,matchResult,stage,stageState;
+  let map,units,selected,mode,selectedSkill,logs,round,phase,matchResult,stage,stageState;
 
   function createMap(){
     return MapDatabase.createMap(stage.mapId);
@@ -46,7 +46,6 @@
 
     selected=null;
     selectedSkill=null;
-    previewTarget=null;
     mode="idle";
     logs=["Round 1｜我方回合開始。"];
     round=1;
@@ -128,7 +127,6 @@
   function clearSelection(){
     selected=null;
     selectedSkill=null;
-    previewTarget=null;
     mode="idle";
   }
 
@@ -184,7 +182,7 @@
     unit.moved=true;
     unit.acted=true;
     selectedSkill=null;
-    mode="skill";
+    mode="inspect";
     logs.push(`${unit.character.name} ${reason}`);
     if(allFinished(TEAM.PLAYER)){
       logs.push("我方所有存活角色皆已完成行動，可結束回合。");
@@ -223,12 +221,6 @@
           return `<div class="unit ${unit.team===TEAM.PLAYER?"player":"enemy"}${finishedClass}">${art}${shortName(unit.character.name)}<br>${unit.hp}</div>`;
         })():""}`;
 
-      if(unit&&targets.includes(unit)){
-        cell.onpointerenter=()=>{
-          previewTarget=unit;
-          renderPanel();
-        };
-      }
       cell.onclick=()=>handleTileClick(tile,unit,reachable,targets);
       battlefield.appendChild(cell);
     });
@@ -247,8 +239,7 @@
     if(unit&&unit.team===TEAM.PLAYER){
       selected=unit;
       selectedSkill=null;
-      previewTarget=null;
-      mode=unit.acted?"inspect":(unit.moved?"skill":"move");
+      mode=unit.acted?"inspect":"command";
       render();
       return;
     }
@@ -257,8 +248,7 @@
       selected.x=tile.x;
       selected.y=tile.y;
       selected.moved=true;
-      previewTarget=null;
-      mode="skill";
+      mode="command";
       logs.push(`${selected.character.name} 移動完成。`);
       stageEvent({type:"ENTER_TILE",unitId:selected.id,characterId:selected.character.id,x:selected.x,y:selected.y,team:"PLAYER"});
       render();
@@ -266,7 +256,6 @@
     }
 
     if(selected&&!selected.acted&&mode==="attack"&&unit&&targets.includes(unit)){
-      previewTarget=unit;
       performAttack(selected,unit,selectedSkill);
     }
   }
@@ -308,7 +297,6 @@
     attacker.acted=true;
 
     selectedSkill=null;
-    previewTarget=null;
     mode="inspect";
 
     if(checkMatchEnd()){
@@ -377,13 +365,37 @@
 
     if(selected.acted) return;
 
-    if(mode==="move"){
-      addActionButton("原地行動",()=>{
-        selected.moved=true;
-        mode="skill";
-        logs.push(`${selected.character.name} 選擇原地行動。`);
+    if(mode==="command"){
+      if(!selected.moved){
+        addActionButton("移動",()=>{
+          selectedSkill=null;
+          mode="move";
+          render();
+        });
+      }
+
+      addActionButton("攻擊",()=>{
+        selectedSkill=null;
+        mode="attack-menu";
         render();
       });
+
+      addActionButton("道具",()=>{
+        logs.push(`${selected.character.name}｜道具系統尚未接入。`);
+        render();
+      });
+
+      addActionButton("對話",()=>{
+        logs.push(`${selected.character.name}｜目前沒有可對話目標。`);
+        render();
+      });
+
+      addActionButton("魔法／特殊技能",()=>{
+        selectedSkill=null;
+        mode="special-menu";
+        render();
+      });
+
       addActionButton("待機",()=>{
         finishUnit(selected,"待機，行動結束。");
         render();
@@ -391,48 +403,61 @@
       return;
     }
 
-    if(mode==="attack"&&selectedSkill){
-      const legalTargets=TacticalEngine.targets(units,selected,selectedSkill);
-      if(!previewTarget||!legalTargets.includes(previewTarget)) previewTarget=legalTargets[0]||null;
-      if(previewTarget){
-        const supports=BattleResolution.supportCandidates({
-          units,
-          initiator:selected,
-          target:previewTarget,
-          canUseSkill
-        });
-        const supportText=supports.length
-          ?supports.map(x=>`${x.ally.character.name}／${x.skill.name}`).join("、")
-          :"無支援者";
-        tacticalInfo.textContent+=
-          `\n目標預覽：${previewTarget.character.name}`+
-          `\n可支援：${supportText}`;
-      }else{
-        tacticalInfo.textContent+="\n目標預覽：目前沒有合法目標";
-      }
+    if(mode==="move"){
+      tacticalInfo.textContent+="\\n請選擇可移動格；取消可返回角色指令。";
+      return;
     }
 
-    SkillDatabase.list(selected.character.skills).forEach(skill=>{
-      const button=document.createElement("button");
-      const range=TacticalEngine.range(skill);
-      const usable=canUseSkill(selected,skill);
-      button.textContent=`${skill.name}｜射程 ${range.min}-${range.max}｜${resourceLabel(selected,skill)}`;
-      button.disabled=!usable;
-      if(skill===selectedSkill) button.classList.add("active");
-      button.onclick=()=>{
-        if(!usable) return;
-        selectedSkill=skill;
-        mode="attack";
-        previewTarget=TacticalEngine.targets(units,selected,skill)[0]||null;
-        render();
-      };
-      skillBar.appendChild(button);
-    });
+    const allSkills=SkillDatabase.list(selected.character.skills);
+    const isSpecial=skill=>skill.category!=="ATTACK";
+    const shownSkills=
+      mode==="special-menu"
+        ?allSkills.filter(isSpecial)
+        :mode==="attack-menu"
+          ?allSkills.filter(skill=>!isSpecial(skill))
+          :[];
 
-    addActionButton("待機",()=>{
-      finishUnit(selected,"待機，行動結束。");
-      render();
-    });
+    if(mode==="attack-menu"||mode==="special-menu"){
+      const menuName=mode==="special-menu"?"魔法／特殊技能":"攻擊";
+      if(!shownSkills.length){
+        tacticalInfo.textContent+=`\\n${menuName}：目前沒有可用技能。`;
+      }
+
+      shownSkills.forEach(skill=>{
+        const button=document.createElement("button");
+        const range=TacticalEngine.range(skill);
+        const usable=canUseSkill(selected,skill);
+        button.textContent=`${skill.name}｜射程 ${range.min}-${range.max}｜${resourceLabel(selected,skill)}`;
+        button.disabled=!usable;
+        button.onclick=()=>{
+          if(!usable) return;
+          selectedSkill=skill;
+          mode="attack";
+          render();
+        };
+        skillBar.appendChild(button);
+      });
+
+      addActionButton("返回",()=>{
+        selectedSkill=null;
+        mode="command";
+        render();
+      });
+      return;
+    }
+
+    if(mode==="attack"&&selectedSkill){
+      const range=TacticalEngine.range(selectedSkill);
+      tacticalInfo.textContent+=`\\n${selectedSkill.name}｜射程 ${range.min}-${range.max}｜請選擇目標。`;
+      addActionButton("返回",()=>{
+        const previousSkill=selectedSkill;
+        selectedSkill=null;
+        mode=isSpecial(previousSkill)?"special-menu":"attack-menu";
+        render();
+      });
+      return;
+    }
+
   }
 
   resetMap.onclick=resetBattle;
