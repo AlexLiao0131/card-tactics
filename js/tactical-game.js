@@ -263,8 +263,13 @@
   function performAttack(attacker,defender,skill){
     if(!canUseSkill(attacker,skill)) return;
 
+    const supportPreview=BattleResolution.supportCandidates({units,initiator:attacker,target:defender,canUseSkill});
+    if(supportPreview.length){
+      logs.push(`支援參戰：${supportPreview.map(x=>x.ally.character.name+"["+x.skill.name+"]").join("、")}`);
+    }
+
     const engagement=BattleResolution.resolve(
-      {map,initiator:attacker,target:defender,skill},
+      {map,units,initiator:attacker,target:defender,skill},
       {
         canUseSkill,
         consumeSkill,
@@ -276,7 +281,7 @@
           const resource=resourceFor(actor,skill);
           const resourceText=resource.type==="USES"?`｜剩餘 ${resource.remaining}/${resource.max}`:"";
           logs.push(
-            `[SPD ${spd}] ${actor.character.name} → ${target.character.name}：`+
+            `[SPD ${spd}] ${entry.role==="SUPPORT"?"支援｜":""}${actor.character.name} → ${target.character.name}：`+
             `${result.hit?result.damage+"傷害":"MISS"}｜命中${result.hc}%`+
             `${resolved.terrain.eva?"｜森林EVA+"+resolved.terrain.eva:""}`+
             `${resolved.terrain.acc?"｜高地ACC+"+resolved.terrain.acc:""}`+
