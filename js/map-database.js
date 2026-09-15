@@ -7,6 +7,7 @@ window.MAPS={
     terrain:[
       {x:2,y:1,terrain:"FOREST"},{x:2,y:2,terrain:"FOREST"},{x:5,y:3,terrain:"FOREST"},
       {x:3,y:0,terrain:"HIGH_GROUND",elevation:1},{x:4,y:0,terrain:"HIGH_GROUND",elevation:1},
+      {x:3,y:1,terrain:"HIGH_GROUND",elevation:2},{x:4,y:1,terrain:"HIGH_GROUND",elevation:2},
       {x:3,y:3,terrain:"WATER"},{x:3,y:4,terrain:"WATER"},{x:4,y:4,terrain:"WATER"},
       {x:4,y:2,terrain:"WALL"},{x:5,y:2,terrain:"WALL"}
     ]
