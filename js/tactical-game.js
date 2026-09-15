@@ -7,18 +7,7 @@
   let map,units,selected,mode,selectedSkill,logs,round,phase,matchResult;
 
   function createMap(){
-    const tiles=[];
-    for(let y=0;y<H;y++){
-      for(let x=0;x<W;x++) tiles.push({x,y,terrain:"PLAIN",elevation:0});
-    }
-    const setTile=(x,y,terrain,elevation=0)=>{
-      Object.assign(tiles.find(t=>t.x===x&&t.y===y),{terrain,elevation});
-    };
-    [[2,1],[2,2],[5,3]].forEach(p=>setTile(...p,"FOREST"));
-    [[3,0],[4,0]].forEach(p=>setTile(...p,"HIGH_GROUND",1));
-    [[3,3],[3,4],[4,4]].forEach(p=>setTile(...p,"WATER"));
-    [[4,2],[5,2]].forEach(p=>setTile(...p,"WALL"));
-    return {tiles};
+    return MapDatabase.createMap("prototype_field");
   }
 
   function createSkillResources(character){
@@ -50,21 +39,9 @@
     map=createMap();
     units=[];
 
-    [
-      ["livia",0,0],
-      ["elf_guard_test",0,2],
-      ["imperial_swordsman",0,4],
-      ["imperial_spearman_test",1,1],
-      ["imperial_mage_test",1,3]
-    ].forEach((u,i)=>units.push(createUnit("p"+i,TEAM.PLAYER,u[0],u[1],u[2])));
-
-    [
-      ["imperial_heavy_guard",7,0],
-      ["forest_beast",7,2],
-      ["water_guard_test",7,4],
-      ["imperial_hammer_test",6,1],
-      ["imperial_swordsman",6,3]
-    ].forEach((u,i)=>units.push(createUnit("e"+i,TEAM.ENEMY,u[0],u[1],u[2])));
+    const stage=MapDatabase.get("prototype_field");
+    stage.playerSpawns.forEach((u,i)=>units.push(createUnit("p"+i,TEAM.PLAYER,u.characterId,u.x,u.y)));
+    stage.enemySpawns.forEach((u,i)=>units.push(createUnit("e"+i,TEAM.ENEMY,u.characterId,u.x,u.y)));
 
     selected=null;
     selectedSkill=null;
