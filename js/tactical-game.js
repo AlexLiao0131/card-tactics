@@ -7,6 +7,11 @@
   let pendingEngagement=null;
   let supportSelection=new Map();
 
+  // Engagement Step 4: enemy SINGLE attacks pause here until the player chooses a reaction.
+  let enemyQueue=[];
+  let pendingEnemyAttack=null;
+  let pendingReactionType=null;
+
   function createMap(){
     return MapDatabase.createMap(stage.mapId);
   }
@@ -51,6 +56,9 @@
     selectedSkill=null;
     pendingEngagement=null;
     supportSelection=new Map();
+    enemyQueue=[];
+    pendingEnemyAttack=null;
+    pendingReactionType=null;
     mode="idle";
     logs=["Round 1｜我方回合開始。"];
     round=1;
@@ -139,6 +147,11 @@
     supportSelection=new Map();
   }
 
+  function clearEnemyReaction(){
+    pendingEnemyAttack=null;
+    pendingReactionType=null;
+  }
+
   function clearSelection(){
     selected=null;
     selectedSkill=null;
@@ -151,6 +164,7 @@
       phase=PHASE.ENDED;
       matchResult="VICTORY";
       clearSelection();
+      clearEnemyReaction();
       logs.push(`Round ${round}｜VICTORY！敵方全滅。`);
       return true;
     }
@@ -158,6 +172,7 @@
       phase=PHASE.ENDED;
       matchResult="DEFEAT";
       clearSelection();
+      clearEnemyReaction();
       logs.push(`Round ${round}｜DEFEAT！我方全滅。`);
       return true;
     }
@@ -169,23 +184,122 @@
     phase=PHASE.PLAYER;
     resetActions(TEAM.PLAYER);
     clearSelection();
+    clearEnemyReaction();
+    enemyQueue=[];
     logs.push(`Round ${round}｜我方回合開始。`);
     stageEvent({type:"ROUND_START",round,team:"PLAYER"});
     render();
   }
 
+  function distance(a,b){
+    return Math.abs(a.x-b.x)+Math.abs(a.y-b.y);
+  }
+
+  function enemySingleSkills(enemy){
+    return SkillDatabase.list(enemy.character.skills).filter(skill=>
+      skill.target==="ENEMY" &&
+      targetType(skill)==="SINGLE" &&
+      canUseSkill(enemy,skill)
+    );
+  }
+
+  function targetsForEnemySkill(enemy,skill){
+    const r=skill.range||{min:1,max:1};
+    return living(TEAM.PLAYER).filter(target=>{
+      const d=distance(enemy,target);
+      return d>=r.min&&d<=r.max;
+    });
+  }
+
+  function chooseEnemyAttack(enemy){
+    for(const skill of enemySingleSkills(enemy)){
+      const targets=targetsForEnemySkill(enemy,skill);
+      if(targets.length){
+        targets.sort((a,b)=>a.hp-b.hp||distance(enemy,a)-distance(enemy,b));
+        return {attacker:enemy,defender:targets[0],skill};
+      }
+    }
+    return null;
+  }
+
+  function moveEnemyTowardTarget(enemy){
+    if(enemy.moved||!enemy.alive) return;
+    const players=living(TEAM.PLAYER);
+    if(!players.length) return;
+
+    const reachable=TacticalEngine.reachable(map,units,enemy);
+    if(!reachable.size){
+      enemy.moved=true;
+      return;
+    }
+
+    let best=null;
+    reachable.forEach((cost,key)=>{
+      const [x,y]=key.split(",").map(Number);
+      const nearest=Math.min(...players.map(p=>Math.abs(x-p.x)+Math.abs(y-p.y)));
+      if(!best||nearest<best.nearest||(nearest===best.nearest&&cost<best.cost)){
+        best={x,y,nearest,cost};
+      }
+    });
+
+    if(best){
+      enemy.x=best.x;
+      enemy.y=best.y;
+      logs.push(`${enemy.character.name} 移動至 (${best.x},${best.y})。`);
+      stageEvent({type:"ENTER_TILE",unitId:enemy.id,characterId:enemy.character.id,x:enemy.x,y:enemy.y,team:"ENEMY"});
+    }
+    enemy.moved=true;
+  }
+
+  function finishEnemyPhase(){
+    if(checkMatchEnd()){
+      render();
+      return;
+    }
+    logs.push(`Round ${round}｜敵方回合結束。`);
+    beginPlayerTurn();
+  }
+
+  function continueEnemyPhase(){
+    if(phase!==PHASE.ENEMY||matchResult||pendingEnemyAttack) return;
+
+    while(enemyQueue.length){
+      const enemy=enemyQueue.shift();
+      if(!enemy?.alive||enemy.acted) continue;
+
+      let attack=chooseEnemyAttack(enemy);
+      if(!attack){
+        moveEnemyTowardTarget(enemy);
+        attack=chooseEnemyAttack(enemy);
+      }
+
+      if(attack){
+        pendingEnemyAttack=attack;
+        pendingReactionType=null;
+        mode="enemy-reaction";
+        logs.push(`${enemy.character.name} 對 ${attack.defender.character.name} 發動 ${attack.skill.name}。`);
+        render();
+        return;
+      }
+
+      enemy.moved=true;
+      enemy.acted=true;
+      enemy.waited=true;
+      logs.push(`${enemy.character.name} 無可攻擊目標，待機。`);
+    }
+
+    finishEnemyPhase();
+  }
+
   function runEnemyPhase(){
     phase=PHASE.ENEMY;
     clearSelection();
+    clearEnemyReaction();
     resetActions(TEAM.ENEMY);
     logs.push(`Round ${round}｜敵方回合開始。`);
-    logs.push("Enemy Phase Skeleton：正式 AI 尚未接入，本回合暫時跳過。");
-    living(TEAM.ENEMY).forEach(u=>{
-      u.moved=true;
-      u.acted=true;
-    });
-    if(!checkMatchEnd()) beginPlayerTurn();
-    else render();
+    enemyQueue=[...living(TEAM.ENEMY)];
+    render();
+    continueEnemyPhase();
   }
 
   function endPlayerTurn(){
@@ -205,6 +319,80 @@
     if(allFinished(TEAM.PLAYER)){
       logs.push("我方所有存活角色皆已完成行動，可結束回合。");
     }
+  }
+
+  function logBattleAction(entry){
+    const {actor,target,skill,result,resolved,spd}=entry;
+    const resource=resourceFor(actor,skill);
+    const resourceText=resource.type==="USES"?`｜剩餘 ${resource.remaining}/${resource.max}`:"";
+    const roleText=entry.role==="SUPPORT"?"支援｜":entry.role==="COUNTER"?"反擊｜":"";
+    let outcome=result.hit?(result.graze?`擦傷 ${result.damage}傷害`:`${result.damage}傷害`):"MISS";
+
+    if(result.evadeOutcome){
+      outcome=`主動迴避 ${result.evadeOutcome}｜${outcome}`;
+    }
+    if(resolved.defense?.method){
+      const d=resolved.defense;
+      const defenseText=d.bypassed
+        ?`${d.method.name}被突破`
+        :d.triggered
+          ?`${d.method.name}${d.success===false?"失敗":"成功"}`
+          :d.method.name;
+      outcome+=`｜${defenseText}`;
+    }
+
+    logs.push(
+      `[SPD ${spd}] ${roleText}${actor.character.name} → ${target.character.name}：`+
+      `${outcome}｜命中${result.hc}%`+
+      `${resolved.terrain.eva?"｜森林EVA+"+resolved.terrain.eva:""}`+
+      `${resolved.terrain.acc?"｜高地ACC+"+resolved.terrain.acc:""}`+
+      resourceText
+    );
+  }
+
+  function executeEnemyAttack(reaction=null){
+    if(!pendingEnemyAttack) return;
+    const {attacker,defender,skill}=pendingEnemyAttack;
+
+    const engagement=BattleResolution.resolve(
+      {map,units,initiator:attacker,target:defender,skill,actions:[],reaction},
+      {
+        canUseSkill,
+        consumeSkill,
+        onDefeated:unit=>{
+          stageEvent({type:"UNIT_DEFEATED",unitId:unit.id,characterId:unit.character.id,team:unit.team});
+        },
+        onAction:logBattleAction
+      }
+    );
+
+    attacker.moved=true;
+    attacker.acted=true;
+    attacker.waited=true;
+
+    clearEnemyReaction();
+    mode="idle";
+
+    if(checkMatchEnd()){
+      render();
+      return;
+    }
+
+    render();
+    continueEnemyPhase();
+  }
+
+  function chooseEnemyReaction(type){
+    if(!pendingEnemyAttack) return;
+    pendingReactionType=type;
+
+    if(type==="EVADE"){
+      executeEnemyAttack(BattleResolution.createReaction("EVADE"));
+      return;
+    }
+
+    mode=type==="COUNTER"?"enemy-counter-select":"enemy-defense-select";
+    render();
   }
 
   function render(){
@@ -253,7 +441,6 @@
 
   function handleTileClick(tile,unit,reachable,targets){
     if(phase!==PHASE.PLAYER||matchResult) return;
-
     if(mode==="support-select") return;
 
     if(unit&&unit.team===TEAM.PLAYER){
@@ -342,18 +529,7 @@
         onDefeated:unit=>{
           stageEvent({type:"UNIT_DEFEATED",unitId:unit.id,characterId:unit.character.id,team:unit.team});
         },
-        onAction:entry=>{
-          const {actor,target,skill,result,resolved,spd}=entry;
-          const resource=resourceFor(actor,skill);
-          const resourceText=resource.type==="USES"?`｜剩餘 ${resource.remaining}/${resource.max}`:"";
-          logs.push(
-            `[SPD ${spd}] ${entry.role==="SUPPORT"?"支援｜":""}${actor.character.name} → ${target.character.name}：`+
-            `${result.hit?result.damage+"傷害":"MISS"}｜命中${result.hc}%`+
-            `${resolved.terrain.eva?"｜森林EVA+"+resolved.terrain.eva:""}`+
-            `${resolved.terrain.acc?"｜高地ACC+"+resolved.terrain.acc:""}`+
-            resourceText
-          );
-        }
+        onAction:logBattleAction
       }
     );
 
@@ -364,9 +540,10 @@
       return;
     }
 
+    // A completed active attack ends this unit's PLAYER TURN action.
     attacker.moved=true;
     attacker.acted=true;
-    attacker.waited=false;
+    attacker.waited=true;
 
     selectedSkill=null;
     clearEngagement();
@@ -453,6 +630,75 @@
     });
   }
 
+  function renderEnemyReaction(){
+    const {attacker,defender,skill}=pendingEnemyAttack;
+    const prep=BattleResolution.prepareSingleTargetReaction({
+      defender,
+      attacker,
+      canUseSkill
+    });
+
+    tacticalInfo.textContent=
+      `敵方攻擊｜${attacker.character.name} → ${defender.character.name}\n`+
+      `${skill.name}｜請選擇反應。`;
+
+    addActionButton("反擊",()=>chooseEnemyReaction("COUNTER"),prep.counterSkills.length===0);
+    addActionButton("防禦",()=>chooseEnemyReaction("DEFENSE"),prep.defenseMethods.length===0);
+    addActionButton("迴避",()=>chooseEnemyReaction("EVADE"));
+  }
+
+  function renderCounterSelection(){
+    const {attacker,defender,skill}=pendingEnemyAttack;
+    const prep=BattleResolution.prepareSingleTargetReaction({
+      defender,
+      attacker,
+      canUseSkill
+    });
+
+    tacticalInfo.textContent=
+      `反擊選擇｜${defender.character.name}\n`+
+      `敵方：${attacker.character.name}｜${skill.name}`;
+
+    prep.counterSkills.forEach(counterSkill=>{
+      addActionButton(
+        `${counterSkill.name}｜射程 ${counterSkill.range.min}-${counterSkill.range.max}｜${resourceLabel(defender,counterSkill)}`,
+        ()=>executeEnemyAttack(BattleResolution.createReaction("COUNTER",{skill:counterSkill}))
+      );
+    });
+
+    addActionButton("返回",()=>{
+      pendingReactionType=null;
+      mode="enemy-reaction";
+      render();
+    });
+  }
+
+  function renderDefenseSelection(){
+    const {attacker,defender,skill}=pendingEnemyAttack;
+    const prep=BattleResolution.prepareSingleTargetReaction({
+      defender,
+      attacker,
+      canUseSkill
+    });
+
+    tacticalInfo.textContent=
+      `防禦方式｜${defender.character.name}\n`+
+      `敵方：${attacker.character.name}｜${skill.name}`;
+
+    prep.defenseMethods.forEach(method=>{
+      addActionButton(
+        `${method.name}｜${method.sourceName||method.method}`,
+        ()=>executeEnemyAttack(BattleResolution.createReaction("DEFENSE",{methodId:method.id}))
+      );
+    });
+
+    addActionButton("返回",()=>{
+      pendingReactionType=null;
+      mode="enemy-reaction";
+      render();
+    });
+  }
+
   function renderPanel(){
     skillBar.innerHTML="";
 
@@ -463,8 +709,23 @@
       return;
     }
 
+    if(phase===PHASE.ENEMY){
+      if(pendingEnemyAttack&&targetType(pendingEnemyAttack.skill)==="SINGLE"){
+        if(mode==="enemy-counter-select"){
+          renderCounterSelection();
+        }else if(mode==="enemy-defense-select"){
+          renderDefenseSelection();
+        }else{
+          renderEnemyReaction();
+        }
+      }else{
+        tacticalInfo.textContent="敵方回合處理中。";
+      }
+      return;
+    }
+
     if(phase!==PHASE.PLAYER){
-      tacticalInfo.textContent="敵方回合處理中。";
+      tacticalInfo.textContent="戰鬥處理中。";
       return;
     }
 
