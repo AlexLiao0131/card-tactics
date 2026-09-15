@@ -9,20 +9,6 @@ window.MAPS={
       {x:3,y:0,terrain:"HIGH_GROUND",elevation:1},{x:4,y:0,terrain:"HIGH_GROUND",elevation:1},
       {x:3,y:3,terrain:"WATER"},{x:3,y:4,terrain:"WATER"},{x:4,y:4,terrain:"WATER"},
       {x:4,y:2,terrain:"WALL"},{x:5,y:2,terrain:"WALL"}
-    ],
-    playerSpawns:[
-      {characterId:"livia",x:0,y:0},
-      {characterId:"elf_guard_test",x:0,y:2},
-      {characterId:"imperial_swordsman",x:0,y:4},
-      {characterId:"imperial_spearman_test",x:1,y:1},
-      {characterId:"imperial_mage_test",x:1,y:3}
-    ],
-    enemySpawns:[
-      {characterId:"imperial_heavy_guard",x:7,y:0},
-      {characterId:"forest_beast",x:7,y:2},
-      {characterId:"water_guard_test",x:7,y:4},
-      {characterId:"imperial_hammer_test",x:6,y:1},
-      {characterId:"imperial_swordsman",x:6,y:3}
     ]
   }
 };

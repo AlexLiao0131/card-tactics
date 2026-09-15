@@ -1,13 +1,12 @@
 (()=>{
-  const W=8,H=6;
   const ICON={PLAIN:"",FOREST:"🌲",HIGH_GROUND:"▲",WATER:"≈",WALL:"■"};
   const TEAM={PLAYER:"P",ENEMY:"E"};
   const PHASE={PLAYER:"PLAYER_TURN",ENEMY:"ENEMY_TURN",ENDED:"MATCH_ENDED"};
 
-  let map,units,selected,mode,selectedSkill,logs,round,phase,matchResult;
+  let map,units,selected,mode,selectedSkill,logs,round,phase,matchResult,stage,stageState;
 
   function createMap(){
-    return MapDatabase.createMap("prototype_field");
+    return MapDatabase.createMap(stage.mapId);
   }
 
   function createSkillResources(character){
@@ -36,10 +35,12 @@
   }
 
   function resetBattle(){
+    stage=StageDatabase.get("prototype_battle");
+    if(!stage) throw new Error("Unknown stage: prototype_battle");
+    stageState=StageEngine.create(stage.scriptId);
     map=createMap();
     units=[];
 
-    const stage=MapDatabase.get("prototype_field");
     stage.playerSpawns.forEach((u,i)=>units.push(createUnit("p"+i,TEAM.PLAYER,u.characterId,u.x,u.y)));
     stage.enemySpawns.forEach((u,i)=>units.push(createUnit("e"+i,TEAM.ENEMY,u.characterId,u.x,u.y)));
 
@@ -50,11 +51,36 @@
     round=1;
     phase=PHASE.PLAYER;
     matchResult=null;
+    stageEvent({type:"ROUND_START",round,team:"PLAYER"});
     render();
   }
 
   function unitAt(x,y){
     return units.find(u=>u.alive&&u.x===x&&u.y===y);
+  }
+
+  function spawnFromScript(action){
+    const team=action.team==="PLAYER"?TEAM.PLAYER:TEAM.ENEMY;
+    if(unitAt(action.x,action.y)) return null;
+    const character=CHARACTERS[action.characterId];
+    if(!character) return null;
+    const prefix=team===TEAM.PLAYER?"p":"e";
+    let n=0,id;
+    do{id=`${prefix}s${n++}`;}while(units.some(u=>u.id===id));
+    const unit=createUnit(id,team,action.characterId,action.x,action.y);
+    units.push(unit);
+    logs.push(`${character.name} 出現在 (${action.x},${action.y})。`);
+    return unit;
+  }
+
+  function stageEvent(event){
+    if(!stageState)return;
+    StageEngine.run(stageState,event,{
+      units,
+      log:text=>logs.push(text),
+      spawn:spawnFromScript,
+      setObjective:action=>logs.push(`勝敗條件變更：${action.objective||action.type}`)
+    });
   }
 
   function shortName(name){
@@ -128,6 +154,7 @@
     resetActions(TEAM.PLAYER);
     clearSelection();
     logs.push(`Round ${round}｜我方回合開始。`);
+    stageEvent({type:"ROUND_START",round,team:"PLAYER"});
     render();
   }
 
@@ -188,7 +215,11 @@
       cell.innerHTML=
         `<span class="icon">${ICON[tile.terrain]}</span>`+
         `${tile.elevation?`<span class="elev">H${tile.elevation}</span>`:""}`+
-        `${unit?`<div class="unit ${unit.team===TEAM.PLAYER?"player":"enemy"}${finishedClass}">${shortName(unit.character.name)}<br>${unit.hp}</div>`:""}`;
+        `${unit?(()=>{
+          const visual=unit.character.visualId?VisualDatabase.get("characters",unit.character.visualId):null;
+          const art=visual?.tactical?`<img src="${visual.tactical}" alt="" onerror="this.style.display='none'">`:"";
+          return `<div class="unit ${unit.team===TEAM.PLAYER?"player":"enemy"}${finishedClass}">${art}${shortName(unit.character.name)}<br>${unit.hp}</div>`;
+        })():""}`;
 
       cell.onclick=()=>handleTileClick(tile,unit,reachable,targets);
       battlefield.appendChild(cell);
@@ -219,6 +250,7 @@
       selected.moved=true;
       mode="skill";
       logs.push(`${selected.character.name} 移動完成。`);
+      stageEvent({type:"ENTER_TILE",unitId:selected.id,characterId:selected.character.id,x:selected.x,y:selected.y,team:"PLAYER"});
       render();
       return;
     }
@@ -236,7 +268,10 @@
 
     consumeSkill(attacker,skill);
     defender.hp=Math.max(0,defender.hp-result.damage);
-    if(defender.hp===0) defender.alive=false;
+    if(defender.hp===0){
+      defender.alive=false;
+      stageEvent({type:"UNIT_DEFEATED",unitId:defender.id,characterId:defender.character.id,team:defender.team});
+    }
 
     attacker.moved=true;
     attacker.acted=true;
