@@ -1,4 +1,7 @@
 window.BattleResolution=(()=>{
+  const ACTIVE_EVADE_PENALTY=20;
+  const GRAZE_DAMAGE_MULTIPLIER=.5;
+
   function createContext({map,initiator,target,skill,actions=[],reaction=null}){
     const primary={
       id:"primary",
@@ -77,8 +80,6 @@ window.BattleResolution=(()=>{
     };
   }
 
-  // Counter is a normal queued attack action. It is deliberately not a
-  // special damage formula: SPD + Skill Speed decides its place in queue.
   function counterSkills({defender,attacker,canUseSkill}){
     if(!defender?.alive||!attacker?.alive) return [];
 
@@ -103,14 +104,15 @@ window.BattleResolution=(()=>{
     };
   }
 
-  // Formal reaction descriptor. DEFENSE and EVADE are recorded here now,
-  // but their numeric outcome is intentionally not invented in this step.
-  // They will be resolved by the defense-method layer once its data is set.
   function createReaction(type,options={}){
     if(!["COUNTER","DEFENSE","EVADE"].includes(type)){
       throw new Error(`Unknown reaction type: ${type}`);
     }
     return {type,...options};
+  }
+
+  function defenseMethods(defender){
+    return EquipmentDatabase.defenseProfiles(defender?.character);
   }
 
   function prepareSingleTargetReaction({
@@ -122,6 +124,7 @@ window.BattleResolution=(()=>{
       defender,
       attacker,
       counterSkills:counterSkills({defender,attacker,canUseSkill}),
+      defenseMethods:defenseMethods(defender),
       choices:["COUNTER","DEFENSE","EVADE"]
     };
   }
@@ -137,6 +140,161 @@ window.BattleResolution=(()=>{
       .sort((a,b)=>b.spd-a.spd||a.index-b.index);
   }
 
+  function attackType(actor,skill){
+    const weapon=actor?.character?.weapons?.[skill?.weapon];
+    return skill?.attackType==="INHERIT" ? weapon?.attackType : skill?.attackType;
+  }
+
+  function attackWeapon(actor,skill){
+    return actor?.character?.weapons?.[skill?.weapon]||null;
+  }
+
+  function hasAffix(item,id){
+    return item?.affixes?.includes(id)===true;
+  }
+
+  function defenseProfileById(defender,id){
+    if(!id) return null;
+    return defenseMethods(defender).find(profile=>profile.id===id)||null;
+  }
+
+  function isPrimaryIncomingAction(context,action){
+    return action.role==="INITIATOR" &&
+      action.actor?.id===context.initiator?.id &&
+      action.target?.id===context.target?.id;
+  }
+
+  function resolveEvade(map,actor,target,skill){
+    const resolved=TacticalEngine.resolve(map,actor,target,skill,{forceHit:true});
+    const base=resolved.result;
+    const originalHit=base.hc;
+    const focusedHit=Math.max(0,originalHit-ACTIVE_EVADE_PENALTY);
+    const roll=Math.random()*100;
+
+    let outcome="MISS";
+    let multiplier=0;
+
+    if(roll<focusedHit){
+      outcome="HIT";
+      multiplier=1;
+    }else if(roll<originalHit){
+      outcome="GRAZE";
+      multiplier=GRAZE_DAMAGE_MULTIPLIER;
+    }
+
+    const damage=Math.round(base.damage*multiplier);
+    const result={
+      ...base,
+      hit:outcome!=="MISS",
+      graze:outcome==="GRAZE",
+      evadeOutcome:outcome,
+      evadeRoll:roll,
+      originalHitChance:originalHit,
+      activeHitChance:focusedHit,
+      damage
+    };
+
+    return {...resolved,result};
+  }
+
+  function resolveDefense(map,actor,target,skill,reaction){
+    const profile=defenseProfileById(target,reaction?.methodId);
+    if(!profile){
+      return {
+        ...TacticalEngine.resolve(map,actor,target,skill),
+        defense:{method:null,valid:false,reason:"DEFENSE_METHOD_NOT_FOUND"}
+      };
+    }
+
+    const type=attackType(actor,skill);
+    const rule=profile.vs?.[type];
+
+    if(!rule){
+      return {
+        ...TacticalEngine.resolve(map,actor,target,skill),
+        defense:{method:profile,valid:false,reason:"ATTACK_TYPE_NOT_SUPPORTED",attackType:type}
+      };
+    }
+
+    const resolved=TacticalEngine.resolve(map,actor,target,skill);
+    const base=resolved.result;
+
+    if(!base.hit){
+      return {
+        ...resolved,
+        defense:{method:profile,valid:true,attackType:type,triggered:false,reason:"ATTACK_MISSED"}
+      };
+    }
+
+    const weapon=attackWeapon(actor,skill);
+    const ordinaryGuardBypassed=
+      profile.method==="GUARD" &&
+      hasAffix(weapon,"PHYSICAL_DEFENSE_IGNORE") &&
+      profile.artifact!==true;
+
+    if(ordinaryGuardBypassed){
+      return {
+        ...resolved,
+        defense:{method:profile,valid:true,attackType:type,triggered:false,bypassed:true,reason:"PHYSICAL_DEFENSE_IGNORE"}
+      };
+    }
+
+    let success=true;
+    let roll=null;
+    if(Number.isFinite(Number(rule.chance))){
+      roll=Math.random()*100;
+      success=roll<Number(rule.chance);
+    }
+
+    let multiplier=1;
+    if(success){
+      if(profile.method==="PARRY"){
+        multiplier=0;
+      }else{
+        multiplier=Number.isFinite(Number(rule.damageMultiplier))
+          ? Number(rule.damageMultiplier)
+          : 1;
+      }
+    }
+
+    const damage=Math.round(base.damage*multiplier);
+    const result={...base,damage};
+
+    return {
+      ...resolved,
+      result,
+      defense:{
+        method:profile,
+        valid:true,
+        attackType:type,
+        triggered:true,
+        success,
+        roll,
+        chance:Number.isFinite(Number(rule.chance))?Number(rule.chance):null,
+        damageMultiplier:multiplier
+      }
+    };
+  }
+
+  function resolveAction(context,action){
+    const {actor,target,skill}=action;
+    const reaction=context.reaction;
+
+    if(!isPrimaryIncomingAction(context,action)||!reaction){
+      return TacticalEngine.resolve(context.map,actor,target,skill);
+    }
+
+    if(reaction.type==="EVADE"){
+      return resolveEvade(context.map,actor,target,skill);
+    }
+
+    if(reaction.type==="DEFENSE"){
+      return resolveDefense(context.map,actor,target,skill,reaction);
+    }
+
+    return TacticalEngine.resolve(context.map,actor,target,skill);
+  }
+
   function execute(context,hooks={}){
     const queue=buildQueue(context);
     const results=[];
@@ -144,11 +302,10 @@ window.BattleResolution=(()=>{
     for(const action of queue){
       const {actor,target,skill}=action;
 
-      // A faster action may have killed either side already.
       if(!actor.alive||!target.alive) continue;
       if(hooks.canUseSkill&&!hooks.canUseSkill(actor,skill)) continue;
 
-      const resolved=TacticalEngine.resolve(context.map,actor,target,skill);
+      const resolved=resolveAction(context,action);
       const result=resolved.result;
 
       hooks.consumeSkill?.(actor,skill);
@@ -170,7 +327,6 @@ window.BattleResolution=(()=>{
   function resolve(options,hooks={}){
     const actions=[...(options.actions||[])];
 
-    // Counter joins the same queue as initiator/support actions.
     if(options.reaction?.type==="COUNTER"&&options.reaction.skill){
       actions.push(createCounterAction(
         options.target,
@@ -200,6 +356,7 @@ window.BattleResolution=(()=>{
     counterSkills,
     createCounterAction,
     createReaction,
+    defenseMethods,
     prepareSingleTargetReaction
   };
 })();

@@ -1,14 +1,50 @@
 window.EQUIPMENT={
   kahns_bow:{id:"kahns_bow",name:"卡恩贈送的獵弓",kind:"WEAPON",attackType:"SHOT",element:"NONE",affixes:[]},
   black_sword:{id:"black_sword",name:"父親留下的黑劍",kind:"WEAPON",attackType:"SLASH",element:"NONE",affixes:["PHYSICAL_DEFENSE_IGNORE","IGNORE_ARMOR_DISADVANTAGE"]},
-  imperial_sword:{id:"imperial_sword",name:"帝國制式長劍",kind:"WEAPON",attackType:"SLASH",element:"NONE",affixes:[]},
+  imperial_sword:{
+    id:"imperial_sword",name:"帝國制式長劍",kind:"WEAPON",attackType:"SLASH",element:"NONE",affixes:[],
+    defenseProfiles:[{
+      id:"sword_parry",method:"PARRY",name:"長劍招架",
+      vs:{SLASH:{chance:70},PIERCE:{chance:65},SHOT:{chance:15},STRIKE:{chance:0},MAGIC:{chance:0}}
+    }]
+  },
   forest_claw:{id:"forest_claw",name:"利爪",kind:"WEAPON",attackType:"SLASH",element:"NONE",affixes:[]},
   training_club:{id:"training_club",name:"訓練木棒",kind:"WEAPON",attackType:"STRIKE",element:"NONE",affixes:[]},
-  standard_sword:{id:"standard_sword",name:"制式長劍",kind:"WEAPON",attackType:"SLASH",element:"NONE",affixes:[]},
-  blessed_sword:{id:"blessed_sword",name:"精靈祝福長劍",kind:"WEAPON",attackType:"SLASH",element:"NONE",affixes:[]},
-  imperial_spear:{id:"imperial_spear",name:"帝國制式長槍",kind:"WEAPON",attackType:"PIERCE",element:"NONE",affixes:[]},
-  imperial_hammer:{id:"imperial_hammer",name:"帝國制式戰錘",kind:"WEAPON",attackType:"STRIKE",element:"NONE",affixes:[]},
-  imperial_staff:{id:"imperial_staff",name:"帝國制式法杖",kind:"WEAPON",attackType:"MAGIC",element:"NONE",affixes:[]},
+  standard_sword:{
+    id:"standard_sword",name:"制式長劍",kind:"WEAPON",attackType:"SLASH",element:"NONE",affixes:[],
+    defenseProfiles:[{
+      id:"standard_sword_parry",method:"PARRY",name:"長劍招架",
+      vs:{SLASH:{chance:70},PIERCE:{chance:65},SHOT:{chance:15},STRIKE:{chance:0},MAGIC:{chance:0}}
+    }]
+  },
+  blessed_sword:{
+    id:"blessed_sword",name:"精靈祝福長劍",kind:"WEAPON",attackType:"SLASH",element:"NONE",affixes:[],
+    defenseProfiles:[{
+      id:"blessed_sword_parry",method:"PARRY",name:"祝福長劍招架",
+      vs:{SLASH:{chance:80},PIERCE:{chance:75},SHOT:{chance:30},STRIKE:{chance:10},MAGIC:{chance:0}}
+    }]
+  },
+  imperial_spear:{
+    id:"imperial_spear",name:"帝國制式長槍",kind:"WEAPON",attackType:"PIERCE",element:"NONE",affixes:[],
+    defenseProfiles:[{
+      id:"spear_deflect",method:"DEFLECT",name:"長槍偏斜",
+      vs:{SLASH:{chance:55,damageMultiplier:.35},PIERCE:{chance:50,damageMultiplier:.35},SHOT:{chance:20,damageMultiplier:.50},STRIKE:{chance:0},MAGIC:{chance:0}}
+    }]
+  },
+  imperial_hammer:{
+    id:"imperial_hammer",name:"帝國制式戰錘",kind:"WEAPON",attackType:"STRIKE",element:"NONE",affixes:[],
+    defenseProfiles:[{
+      id:"hammer_brace",method:"BRACE",name:"戰錘承受",
+      vs:{SLASH:{damageMultiplier:.75},PIERCE:{damageMultiplier:.80},SHOT:{damageMultiplier:.85},STRIKE:{damageMultiplier:.80},MAGIC:{damageMultiplier:1}}
+    }]
+  },
+  imperial_staff:{
+    id:"imperial_staff",name:"帝國制式法杖",kind:"WEAPON",attackType:"MAGIC",element:"NONE",affixes:[],
+    defenseProfiles:[{
+      id:"staff_barrier",method:"BARRIER",name:"法杖屏障",
+      vs:{SLASH:{damageMultiplier:.85},PIERCE:{damageMultiplier:.85},SHOT:{damageMultiplier:.80},STRIKE:{damageMultiplier:.90},MAGIC:{damageMultiplier:.65}}
+    }]
+  },
 
   livia_light_armor:{id:"livia_light_armor",name:"輕型防具",kind:"ARMOR",type:"LIGHT",types:["LIGHT"],element:"NONE",affixes:[]},
   imperial_medium_armor:{id:"imperial_medium_armor",name:"帝國制式中型甲",kind:"ARMOR",type:"MEDIUM",types:["MEDIUM"],element:"NONE",affixes:[]},
@@ -17,20 +53,58 @@ window.EQUIPMENT={
   no_armor:{id:"no_armor",name:"無甲",kind:"ARMOR",type:"NONE",types:["NONE"],element:"NONE",affixes:[]},
   water_medium_armor:{id:"water_medium_armor",name:"水紋中型甲",kind:"ARMOR",type:"MEDIUM",types:["MEDIUM"],element:"WATER",affixes:[]},
   elf_light_armor:{id:"elf_light_armor",name:"精靈輕甲",kind:"ARMOR",type:"LIGHT",types:["LIGHT"],element:"NONE",affixes:[]},
-  imperial_heavy_armor:{id:"imperial_heavy_armor",name:"帝國制式重甲",kind:"ARMOR",type:"HEAVY",types:["HEAVY"],element:"NONE",affixes:[]},
+  imperial_heavy_armor:{
+    id:"imperial_heavy_armor",name:"帝國制式重甲",kind:"ARMOR",type:"HEAVY",types:["HEAVY"],element:"NONE",affixes:[],
+    defenseProfiles:[{
+      id:"heavy_armor_brace",method:"BRACE",name:"重甲承受",
+      vs:{SLASH:{damageMultiplier:.75},PIERCE:{damageMultiplier:.75},SHOT:{damageMultiplier:.70},STRIKE:{damageMultiplier:.85},MAGIC:{damageMultiplier:1}}
+    }]
+  },
   mage_cloth:{id:"mage_cloth",name:"法師布衣",kind:"ARMOR",type:"LIGHT",types:["LIGHT"],element:"NONE",affixes:[]},
 
   blue_cloak:{id:"blue_cloak",name:"藍色斗篷",kind:"ACCESSORY",affixes:["MAGIC_RESIST"]},
   leather_bracers:{id:"leather_bracers",name:"皮護腕",kind:"ACCESSORY",affixes:[]},
   sapphire_pendant:{id:"sapphire_pendant",name:"藍寶石掛墜",kind:"ACCESSORY",affixes:["ANCIENT_MAGIC_MEDIUM"]},
   imperial_heavy_plate:{id:"imperial_heavy_plate",name:"帝國制式重甲",kind:"ACCESSORY",affixes:[]},
-  imperial_large_shield:{id:"imperial_large_shield",name:"帝國大型盾牌",kind:"ACCESSORY",affixes:[]},
-  elf_blessed_guard:{id:"elf_blessed_guard",name:"精靈祝福武器",kind:"GUARD",affixes:["ARTIFACT_PARRY"]}
+  imperial_large_shield:{
+    id:"imperial_large_shield",name:"帝國大型盾牌",kind:"ACCESSORY",affixes:[],
+    defenseProfiles:[{
+      id:"large_shield_guard",method:"GUARD",name:"大型盾牌格擋",canGuardAlly:true,
+      vs:{SLASH:{damageMultiplier:.45},PIERCE:{damageMultiplier:.50},SHOT:{damageMultiplier:.35},STRIKE:{damageMultiplier:.60},MAGIC:{damageMultiplier:.85}}
+    }]
+  },
+  elf_blessed_guard:{
+    id:"elf_blessed_guard",name:"精靈祝福武器",kind:"GUARD",affixes:["ARTIFACT_PARRY"],
+    defenseProfiles:[{
+      id:"artifact_parry",method:"PARRY",name:"神器招架",artifact:true,
+      vs:{SLASH:{chance:90},PIERCE:{chance:85},SHOT:{chance:60},STRIKE:{chance:40},MAGIC:{chance:55}}
+    }]
+  }
 };
 
 window.EquipmentDatabase=(()=>{
   function get(id){ return EQUIPMENT[id]||null; }
   function list(ids=[]){ return ids.map(get).filter(Boolean); }
+
+  function equippedItems(character){
+    return [
+      ...Object.values(character?.weapons||{}),
+      character?.armor,
+      ...(character?.equipment||[]),
+      character?.guard
+    ].filter(Boolean);
+  }
+
+  function defenseProfiles(character){
+    const profiles=[];
+    for(const item of equippedItems(character)){
+      for(const profile of item.defenseProfiles||[]){
+        profiles.push({...profile,sourceId:item.id,sourceName:item.name});
+      }
+    }
+    return profiles;
+  }
+
   function resolveCharacter(character){
     const weapons={};
     Object.entries(character.weaponIds||{}).forEach(([slot,id])=>{
@@ -45,5 +119,6 @@ window.EquipmentDatabase=(()=>{
       guard:character.guardId?get(character.guardId):undefined
     };
   }
-  return {get,list,resolveCharacter};
+
+  return {get,list,equippedItems,defenseProfiles,resolveCharacter};
 })();
