@@ -358,7 +358,7 @@
       return;
     }
 
-    selected.SkillDatabase.list(character.skills).forEach(skill=>{
+    SkillDatabase.list(selected.character.skills).forEach(skill=>{
       const button=document.createElement("button");
       const range=TacticalEngine.range(skill);
       const usable=canUseSkill(selected,skill);
