@@ -263,29 +263,33 @@
   function performAttack(attacker,defender,skill){
     if(!canUseSkill(attacker,skill)) return;
 
-    const resolved=TacticalEngine.resolve(map,attacker,defender,skill);
-    const result=resolved.result;
+    const engagement=BattleResolution.resolve(
+      {map,initiator:attacker,target:defender,skill},
+      {
+        canUseSkill,
+        consumeSkill,
+        onDefeated:unit=>{
+          stageEvent({type:"UNIT_DEFEATED",unitId:unit.id,characterId:unit.character.id,team:unit.team});
+        },
+        onAction:entry=>{
+          const {actor,target,skill,result,resolved,spd}=entry;
+          const resource=resourceFor(actor,skill);
+          const resourceText=resource.type==="USES"?`｜剩餘 ${resource.remaining}/${resource.max}`:"";
+          logs.push(
+            `[SPD ${spd}] ${actor.character.name} → ${target.character.name}：`+
+            `${result.hit?result.damage+"傷害":"MISS"}｜命中${result.hc}%`+
+            `${resolved.terrain.eva?"｜森林EVA+"+resolved.terrain.eva:""}`+
+            `${resolved.terrain.acc?"｜高地ACC+"+resolved.terrain.acc:""}`+
+            resourceText
+          );
+        }
+      }
+    );
 
-    consumeSkill(attacker,skill);
-    defender.hp=Math.max(0,defender.hp-result.damage);
-    if(defender.hp===0){
-      defender.alive=false;
-      stageEvent({type:"UNIT_DEFEATED",unitId:defender.id,characterId:defender.character.id,team:defender.team});
-    }
+    if(!engagement.results.length) return;
 
     attacker.moved=true;
     attacker.acted=true;
-
-    const resource=resourceFor(attacker,skill);
-    const resourceText=resource.type==="USES"?`｜剩餘 ${resource.remaining}/${resource.max}`:"";
-
-    logs.push(
-      `${attacker.character.name} → ${defender.character.name}：`+
-      `${result.hit?result.damage+"傷害":"MISS"}｜命中${result.hc}%`+
-      `${resolved.terrain.eva?"｜森林EVA+"+resolved.terrain.eva:""}`+
-      `${resolved.terrain.acc?"｜高地ACC+"+resolved.terrain.acc:""}`+
-      resourceText
-    );
 
     selectedSkill=null;
     mode="inspect";
