@@ -11,6 +11,7 @@
   let enemyQueue=[];
   let pendingEnemyAttack=null;
   let pendingReactionType=null;
+  let selectedGuardian=null;
 
   function createMap(){
     return MapDatabase.createMap(stage.mapId);
@@ -59,6 +60,7 @@
     enemyQueue=[];
     pendingEnemyAttack=null;
     pendingReactionType=null;
+    selectedGuardian=null;
     mode="idle";
     logs=["Round 1｜我方回合開始。"];
     round=1;
@@ -150,6 +152,7 @@
   function clearEnemyReaction(){
     pendingEnemyAttack=null;
     pendingReactionType=null;
+    selectedGuardian=null;
   }
 
   function clearSelection(){
@@ -353,9 +356,14 @@
   function executeEnemyAttack(reaction=null){
     if(!pendingEnemyAttack) return;
     const {attacker,defender,skill}=pendingEnemyAttack;
+    const guardian=reaction?.guardian||null;
+
+    if(guardian){
+      logs.push(`${guardian.character.name} 援護 ${defender.character.name}，承接 ${attacker.character.name} 的攻擊。`);
+    }
 
     const engagement=BattleResolution.resolve(
-      {map,units,initiator:attacker,target:defender,skill,actions:[],reaction},
+      {map,units,initiator:attacker,target:defender,skill,actions:[],reaction,guardian},
       {
         canUseSkill,
         consumeSkill,
@@ -380,6 +388,19 @@
 
     render();
     continueEnemyPhase();
+  }
+
+  function guardCandidates(){
+    if(!pendingEnemyAttack) return [];
+    const {defender}=pendingEnemyAttack;
+    return BattleResolution.guardCandidates({units,target:defender});
+  }
+
+  function chooseGuardian(guardian){
+    selectedGuardian=guardian;
+    pendingReactionType=null;
+    mode="enemy-guard-reaction";
+    render();
   }
 
   function chooseEnemyReaction(type){
@@ -642,9 +663,14 @@
       `敵方攻擊｜${attacker.character.name} → ${defender.character.name}\n`+
       `${skill.name}｜請選擇反應。`;
 
+    const guards=guardCandidates();
     addActionButton("反擊",()=>chooseEnemyReaction("COUNTER"),prep.counterSkills.length===0);
     addActionButton("防禦",()=>chooseEnemyReaction("DEFENSE"),prep.defenseMethods.length===0);
     addActionButton("迴避",()=>chooseEnemyReaction("EVADE"));
+    addActionButton("援護防禦",()=>{
+      mode="enemy-guard-select";
+      render();
+    },guards.length===0);
   }
 
   function renderCounterSelection(){
@@ -699,6 +725,76 @@
     });
   }
 
+  function renderGuardSelection(){
+    const {attacker,defender,skill}=pendingEnemyAttack;
+    const guards=guardCandidates();
+
+    tacticalInfo.textContent=
+      `援護防禦｜${attacker.character.name} → ${defender.character.name}\n`+
+      `${skill.name}\n`+
+      `僅顯示目標上下左右、且具有 canGuardAlly 能力的友軍。`;
+
+    guards.forEach(({guardian,profiles})=>{
+      addActionButton(
+        `${guardian.character.name}｜${profiles.map(p=>p.name).join("／")}`,
+        ()=>chooseGuardian(guardian)
+      );
+    });
+
+    addActionButton("返回",()=>{
+      selectedGuardian=null;
+      mode="enemy-reaction";
+      render();
+    });
+  }
+
+  function renderGuardReaction(){
+    const {attacker,defender,skill}=pendingEnemyAttack;
+    const guardian=selectedGuardian;
+    if(!guardian?.alive){
+      selectedGuardian=null;
+      mode="enemy-reaction";
+      render();
+      return;
+    }
+
+    const guardianMethods=BattleResolution.defenseMethods(guardian);
+    const counterSkills=BattleResolution.counterSkills({
+      defender,
+      attacker,
+      canUseSkill
+    });
+
+    tacticalInfo.textContent=
+      `援護成立｜${guardian.character.name} 保護 ${defender.character.name}\n`+
+      `${attacker.character.name}｜${skill.name}\n`+
+      `攻擊將完整轉向援護者；援護者不能代替目標迴避。`;
+
+    guardianMethods.forEach(method=>{
+      addActionButton(
+        `${method.name}｜${method.sourceName||method.method}`,
+        ()=>executeEnemyAttack(
+          BattleResolution.createReaction("DEFENSE",{methodId:method.id,guardian})
+        )
+      );
+    });
+
+    counterSkills.forEach(counterSkill=>{
+      addActionButton(
+        `原目標反擊｜${counterSkill.name}｜${resourceLabel(defender,counterSkill)}`,
+        ()=>executeEnemyAttack(
+          BattleResolution.createReaction("COUNTER",{skill:counterSkill,guardian})
+        )
+      );
+    });
+
+    addActionButton("返回",()=>{
+      selectedGuardian=null;
+      mode="enemy-guard-select";
+      render();
+    });
+  }
+
   function renderPanel(){
     skillBar.innerHTML="";
 
@@ -715,6 +811,10 @@
           renderCounterSelection();
         }else if(mode==="enemy-defense-select"){
           renderDefenseSelection();
+        }else if(mode==="enemy-guard-select"){
+          renderGuardSelection();
+        }else if(mode==="enemy-guard-reaction"){
+          renderGuardReaction();
         }else{
           renderEnemyReaction();
         }
