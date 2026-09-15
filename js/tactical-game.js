@@ -3,7 +3,7 @@
   const TEAM={PLAYER:"P",ENEMY:"E"};
   const PHASE={PLAYER:"PLAYER_TURN",ENEMY:"ENEMY_TURN",ENDED:"MATCH_ENDED"};
 
-  let map,units,selected,mode,selectedSkill,logs,round,phase,matchResult,stage,stageState;
+  let map,units,selected,mode,selectedSkill,previewTarget,logs,round,phase,matchResult,stage,stageState;
 
   function createMap(){
     return MapDatabase.createMap(stage.mapId);
@@ -46,6 +46,7 @@
 
     selected=null;
     selectedSkill=null;
+    previewTarget=null;
     mode="idle";
     logs=["Round 1｜我方回合開始。"];
     round=1;
@@ -127,6 +128,7 @@
   function clearSelection(){
     selected=null;
     selectedSkill=null;
+    previewTarget=null;
     mode="idle";
   }
 
@@ -221,6 +223,12 @@
           return `<div class="unit ${unit.team===TEAM.PLAYER?"player":"enemy"}${finishedClass}">${art}${shortName(unit.character.name)}<br>${unit.hp}</div>`;
         })():""}`;
 
+      if(unit&&targets.includes(unit)){
+        cell.onpointerenter=()=>{
+          previewTarget=unit;
+          renderPanel();
+        };
+      }
       cell.onclick=()=>handleTileClick(tile,unit,reachable,targets);
       battlefield.appendChild(cell);
     });
@@ -239,6 +247,7 @@
     if(unit&&unit.team===TEAM.PLAYER){
       selected=unit;
       selectedSkill=null;
+      previewTarget=null;
       mode=unit.acted?"inspect":(unit.moved?"skill":"move");
       render();
       return;
@@ -248,6 +257,7 @@
       selected.x=tile.x;
       selected.y=tile.y;
       selected.moved=true;
+      previewTarget=null;
       mode="skill";
       logs.push(`${selected.character.name} 移動完成。`);
       stageEvent({type:"ENTER_TILE",unitId:selected.id,characterId:selected.character.id,x:selected.x,y:selected.y,team:"PLAYER"});
@@ -256,6 +266,7 @@
     }
 
     if(selected&&!selected.acted&&mode==="attack"&&unit&&targets.includes(unit)){
+      previewTarget=unit;
       performAttack(selected,unit,selectedSkill);
     }
   }
@@ -297,6 +308,7 @@
     attacker.acted=true;
 
     selectedSkill=null;
+    previewTarget=null;
     mode="inspect";
 
     if(checkMatchEnd()){
@@ -379,6 +391,27 @@
       return;
     }
 
+    if(mode==="attack"&&selectedSkill){
+      const legalTargets=TacticalEngine.targets(units,selected,selectedSkill);
+      if(!previewTarget||!legalTargets.includes(previewTarget)) previewTarget=legalTargets[0]||null;
+      if(previewTarget){
+        const supports=BattleResolution.supportCandidates({
+          units,
+          initiator:selected,
+          target:previewTarget,
+          canUseSkill
+        });
+        const supportText=supports.length
+          ?supports.map(x=>`${x.ally.character.name}／${x.skill.name}`).join("、")
+          :"無支援者";
+        tacticalInfo.textContent+=
+          `\n目標預覽：${previewTarget.character.name}`+
+          `\n可支援：${supportText}`;
+      }else{
+        tacticalInfo.textContent+="\n目標預覽：目前沒有合法目標";
+      }
+    }
+
     SkillDatabase.list(selected.character.skills).forEach(skill=>{
       const button=document.createElement("button");
       const range=TacticalEngine.range(skill);
@@ -390,6 +423,7 @@
         if(!usable) return;
         selectedSkill=skill;
         mode="attack";
+        previewTarget=TacticalEngine.targets(units,selected,skill)[0]||null;
         render();
       };
       skillBar.appendChild(button);
