@@ -1,28 +1,22 @@
 (()=> {
   const host=document.getElementById("cardPhasePanel");
-  if(!host||!window.CardPhaseEngine)return;
-
-  const demoDeck=[
-    "livia_card","imperial_swordsman_card","imperial_swordsman_card",
-    "imperial_spearman_card","imperial_mage_card","fog_card","rain_card","resurrection_card"
-  ];
-  const state=CardPhaseEngine.create({deck:demoDeck,crystalsPerTurn:10});
-  DeckEngine.shuffle(state.zones);
+  if(!host||!window.CardTacticsRuntime)return;
 
   function render(){
+    const state=CardTacticsRuntime.getCardState();
+    if(!state)return;
+    const phase=CardTacticsRuntime.getPhase();
+    const pending=CardTacticsRuntime.getPendingCard();
     const cards=CardDatabase.list(state.zones.hand);
     host.innerHTML=
-      `<div class="card-phase-head"><strong>卡牌階段骨架</strong><span>💎 ${state.crystals}/10</span></div>`+
+      `<div class="card-phase-head"><strong>${phase==="CARD_PHASE"?"卡牌階段":"卡牌資訊"}</strong><span>💎 ${state.crystals}/${state.crystalsPerTurn}</span></div>`+
       `<div class="card-zone-summary">牌庫 ${state.zones.deck.length}｜手牌 ${state.zones.hand.length}｜墓地 ${state.zones.graveyard.length}｜棄牌 ${state.zones.discard.length}</div>`+
-      `<div class="hand">${cards.map(c=>`<button class="hand-card" data-card="${c.id}" ${CardPhaseEngine.canPlay(state,c)?"":"disabled"}><b>${c.name}</b><small>${c.type==="CHARACTER"?(c.unitType==="HERO"?"英雄角色卡":"角色卡"):"卡牌魔法"}｜Cost ${c.cost}</small></button>`).join("")}</div>`+
-      `<div class="card-phase-actions"><button id="demoBeginCardPhase">${state.active?"重新開始卡牌階段":"開始卡牌階段"}</button><button id="demoEndCardPhase" ${state.active?"":"disabled"}>結束卡牌階段</button></div>`;
-    host.querySelector("#demoBeginCardPhase").onclick=()=>{CardPhaseEngine.begin(state,{draw:3});render();};
-    host.querySelector("#demoEndCardPhase").onclick=()=>{CardPhaseEngine.end(state);render();};
-    host.querySelectorAll("[data-card]").forEach(btn=>btn.onclick=()=>{
-      const card=CardDatabase.get(btn.dataset.card);
-      if(!CardPhaseEngine.commit(state,card))return;
-      render();
-    });
+      `<div class="hand">${cards.map(c=>`<button class="hand-card ${pending?.id===c.id?"active":""}" data-card="${c.id}" ${phase==="CARD_PHASE"&&CardPhaseEngine.canPlay(state,c)?"":"disabled"}><b>${c.name}</b><small>${c.type==="CHARACTER"?(c.unitType==="HERO"?"英雄角色卡":"角色卡"):"卡牌魔法"}｜Cost ${c.cost}</small></button>`).join("")||"<div class='empty-hand'>目前沒有手牌</div>"}</div>`+
+      `<div class="card-phase-actions"><button id="endCardPhase" ${phase==="CARD_PHASE"?"":"disabled"}>結束卡牌階段</button><button id="cancelCardDeploy" ${pending?"":"disabled"}>取消部署</button></div>`;
+    host.querySelectorAll("[data-card]").forEach(btn=>btn.onclick=()=>CardTacticsRuntime.playCard(btn.dataset.card));
+    host.querySelector("#endCardPhase").onclick=()=>CardTacticsRuntime.endCardPhase();
+    host.querySelector("#cancelCardDeploy").onclick=()=>CardTacticsRuntime.cancelCard();
   }
+  window.addEventListener("cardtactics:state",render);
   render();
 })();

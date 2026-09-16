@@ -1,9 +1,10 @@
 (()=>{
   const ICON={PLAIN:"",FOREST:"🌲",HIGH_GROUND:"▲",WATER:"≈",WALL:"■"};
   const TEAM={PLAYER:"P",ENEMY:"E"};
-  const PHASE={PLAYER:"PLAYER_TURN",ENEMY:"ENEMY_TURN",ENDED:"MATCH_ENDED"};
+  const PHASE={CARD:"CARD_PHASE",PLAYER:"PLAYER_TURN",ENEMY:"ENEMY_TURN",ENDED:"MATCH_ENDED"};
 
   let map,units,selected,mode,selectedSkill,logs,round,phase,matchResult,stage,stageState;
+  let logState=BattleLog.create(),cardState=null,pendingCard=null,unitSerial=0;
   let pendingEngagement=null;
   let supportSelection=new Map();
 
@@ -13,6 +14,103 @@
   let pendingReactionType=null;
   let selectedGuardian=null;
   let selectedGuardInterception=null;
+
+  function pushLog(text,type="SYSTEM"){
+    logs.push(String(text));
+    BattleLog.add(logState,type,String(text));
+  }
+
+  function renderLog(){
+    if(!window.battleLog)return;
+    battleLog.textContent=BattleLog.list(logState).map(e=>e.text).join("\n")||"（目前沒有紀錄）";
+    document.querySelectorAll("[data-log-tab]").forEach(btn=>{
+      btn.classList.toggle("active",btn.dataset.logTab===logState.active);
+    });
+  }
+
+  function logPostEffect(entry){
+    const {source,target,effect,result}=entry;
+    if(!result)return;
+    if(!result.applied){
+      pushLog(`${target.character.name}｜${effect.type} 未生效${result.reason?`（${result.reason}）`:""}。`,"DETAIL");
+      return;
+    }
+    const moved=result.steps?.length||0;
+    pushLog(`${source.character.name} → ${target.character.name}：${effect.type==="PULL"?"拉近":"擊退"} ${moved} 格。`,"BATTLE");
+    if(result.falls?.length){
+      const drops=result.falls.map(f=>`H${f.from}→H${f.to}`).join("、");
+      pushLog(`${target.character.name} 墜落 ${drops}｜墜落傷害 ${result.fallDamage}｜HP ${target.hp}。`,"BATTLE");
+    }else{
+      pushLog(`${target.character.name} 強制位移完成｜無墜落傷害。`,"DETAIL");
+    }
+  }
+
+  function handleDefeated(unit,source,skillOrEffect){
+    stageEvent({type:"UNIT_DEFEATED",unitId:unit.id,characterId:unit.character.id,team:unit.team});
+    if(unit.team===TEAM.PLAYER&&unit.cardId&&cardState){
+      CardPhaseEngine.characterDefeated(cardState,unit.cardId);
+      pushLog(`${unit.character.name} 戰敗，角色卡進入墓地。`,"SYSTEM");
+    }
+  }
+
+  function beginCardPhase({initial=false}={}){
+    phase=PHASE.CARD;
+    clearSelection();
+    const draw=initial?Number(stage.cardRules?.startingHand||3):Number(stage.cardRules?.drawPerTurn||1);
+    const drawn=CardPhaseEngine.begin(cardState,{draw});
+    pushLog(`Round ${round}｜卡牌階段開始｜💎 ${cardState.crystals}。`,"SYSTEM");
+    if(drawn.length)pushLog(`抽牌 ${drawn.length} 張。`,"SYSTEM");
+    pendingCard=null;
+    render();
+    window.dispatchEvent(new CustomEvent("cardtactics:state"));
+  }
+
+  function endCardPhase(){
+    if(phase!==PHASE.CARD)return;
+    pendingCard=null;
+    CardPhaseEngine.end(cardState);
+    phase=PHASE.PLAYER;
+    pushLog(`Round ${round}｜進入戰棋階段。`,"SYSTEM");
+    render();
+    window.dispatchEvent(new CustomEvent("cardtactics:state"));
+  }
+
+  function selectCardForPlay(cardId){
+    if(phase!==PHASE.CARD)return false;
+    const card=CardDatabase.get(cardId);
+    if(!CardPhaseEngine.canPlay(cardState,card))return false;
+    if(CardDatabase.isCharacter(card)){
+      pendingCard=card;
+      pushLog(`選擇 ${card.name}，請在亮起的我方部署區手動選擇出生格。`,"SYSTEM");
+      render();
+      return true;
+    }
+    if(CardDatabase.isSpell(card)){
+      if(!CardPhaseEngine.commit(cardState,card))return false;
+      pushLog(`施放卡牌魔法「${card.name}」｜消耗 ${card.cost} 水晶。`,"SYSTEM");
+      if(card.effect?.type==="WEATHER")pushLog(`天候變更：${card.effect.weather}（目前為卡牌效果流程測試）。`,"SYSTEM");
+      pendingCard=null;
+      render();
+      window.dispatchEvent(new CustomEvent("cardtactics:state"));
+      return true;
+    }
+    return false;
+  }
+
+  function deployPendingCard(tile){
+    const card=pendingCard;
+    if(!card||phase!==PHASE.CARD)return false;
+    if(!DeploymentEngine.canDeploy({stage,map,units,owner:"PLAYER",x:tile.x,y:tile.y}))return false;
+    const unit=createUnit(`pc${unitSerial++}`,TEAM.PLAYER,card.characterId,tile.x,tile.y);
+    unit.cardId=card.id;
+    if(!CardPhaseEngine.commit(cardState,card))return false;
+    units.push(unit);
+    pushLog(`${card.name} 部署至 (${tile.x},${tile.y})｜消耗 ${card.cost} 水晶。`,"SYSTEM");
+    pendingCard=null;
+    render();
+    window.dispatchEvent(new CustomEvent("cardtactics:state"));
+    return true;
+  }
 
   function createMap(){
     return MapDatabase.createMap(stage.mapId);
@@ -50,6 +148,11 @@
     stageState=StageEngine.create(stage.scriptId);
     map=createMap();
     units=[];
+    unitSerial=0;
+    logState=BattleLog.create();
+    const demoDeck=["livia_card","imperial_swordsman_card","imperial_swordsman_card","imperial_spearman_card","imperial_mage_card","fog_card","rain_card","resurrection_card"];
+    cardState=CardPhaseEngine.create({deck:demoDeck,crystalsPerTurn:Number(stage.cardRules?.crystalsPerTurn||10)});
+    DeckEngine.shuffle(cardState.zones);
 
     stage.playerSpawns.forEach((u,i)=>units.push(createUnit("p"+i,TEAM.PLAYER,u.characterId,u.x,u.y)));
     stage.enemySpawns.forEach((u,i)=>units.push(createUnit("e"+i,TEAM.ENEMY,u.characterId,u.x,u.y)));
@@ -64,12 +167,12 @@
     selectedGuardian=null;
     selectedGuardInterception=null;
     mode="idle";
-    logs=["Round 1｜我方回合開始。"];
+    logs=[];
     round=1;
-    phase=PHASE.PLAYER;
+    phase=PHASE.CARD;
     matchResult=null;
     stageEvent({type:"ROUND_START",round,team:"PLAYER"});
-    render();
+    beginCardPhase({initial:true});
   }
 
   function unitAt(x,y){
@@ -86,7 +189,7 @@
     do{id=`${prefix}s${n++}`;}while(units.some(u=>u.id===id));
     const unit=createUnit(id,team,action.characterId,action.x,action.y);
     units.push(unit);
-    logs.push(`${character.name} 出現在 (${action.x},${action.y})。`);
+    pushLog(`${character.name} 出現在 (${action.x},${action.y})。`);
     return unit;
   }
 
@@ -94,9 +197,9 @@
     if(!stageState)return;
     StageEngine.run(stageState,event,{
       units,
-      log:text=>logs.push(text),
+      log:text=>pushLog(text),
       spawn:spawnFromScript,
-      setObjective:action=>logs.push(`勝敗條件變更：${action.objective||action.type}`)
+      setObjective:action=>pushLog(`勝敗條件變更：${action.objective||action.type}`)
     });
   }
 
@@ -171,7 +274,7 @@
       matchResult="VICTORY";
       clearSelection();
       clearEnemyReaction();
-      logs.push(`Round ${round}｜VICTORY！敵方全滅。`);
+      pushLog(`Round ${round}｜VICTORY！敵方全滅。`);
       return true;
     }
     if(living(TEAM.PLAYER).length===0){
@@ -179,7 +282,7 @@
       matchResult="DEFEAT";
       clearSelection();
       clearEnemyReaction();
-      logs.push(`Round ${round}｜DEFEAT！我方全滅。`);
+      pushLog(`Round ${round}｜DEFEAT！我方全滅。`);
       return true;
     }
     return false;
@@ -192,9 +295,9 @@
     clearSelection();
     clearEnemyReaction();
     enemyQueue=[];
-    logs.push(`Round ${round}｜我方回合開始。`);
+    pushLog(`Round ${round}｜我方回合開始。`,"SYSTEM");
     stageEvent({type:"ROUND_START",round,team:"PLAYER"});
-    render();
+    beginCardPhase();
   }
 
   function distance(a,b){
@@ -251,7 +354,7 @@
     if(best){
       enemy.x=best.x;
       enemy.y=best.y;
-      logs.push(`${enemy.character.name} 移動至 (${best.x},${best.y})。`);
+      pushLog(`${enemy.character.name} 移動至 (${best.x},${best.y})。`,"DETAIL");
       stageEvent({type:"ENTER_TILE",unitId:enemy.id,characterId:enemy.character.id,x:enemy.x,y:enemy.y,team:"ENEMY"});
     }
     enemy.moved=true;
@@ -262,7 +365,7 @@
       render();
       return;
     }
-    logs.push(`Round ${round}｜敵方回合結束。`);
+    pushLog(`Round ${round}｜敵方回合結束。`);
     beginPlayerTurn();
   }
 
@@ -283,7 +386,7 @@
         pendingEnemyAttack=attack;
         pendingReactionType=null;
         mode="enemy-reaction";
-        logs.push(`${enemy.character.name} 對 ${attack.defender.character.name} 發動 ${attack.skill.name}。`);
+        pushLog(`${enemy.character.name} 對 ${attack.defender.character.name} 發動 ${attack.skill.name}。`);
         render();
         return;
       }
@@ -291,7 +394,7 @@
       enemy.moved=true;
       enemy.acted=true;
       enemy.waited=true;
-      logs.push(`${enemy.character.name} 無可攻擊目標，待機。`);
+      pushLog(`${enemy.character.name} 無可攻擊目標，待機。`);
     }
 
     finishEnemyPhase();
@@ -302,7 +405,7 @@
     clearSelection();
     clearEnemyReaction();
     resetActions(TEAM.ENEMY);
-    logs.push(`Round ${round}｜敵方回合開始。`);
+    pushLog(`Round ${round}｜敵方回合開始。`);
     enemyQueue=[...living(TEAM.ENEMY)];
     render();
     continueEnemyPhase();
@@ -310,7 +413,7 @@
 
   function endPlayerTurn(){
     if(phase!==PHASE.PLAYER||matchResult) return;
-    logs.push(`Round ${round}｜我方回合結束。`);
+    pushLog(`Round ${round}｜我方回合結束。`);
     runEnemyPhase();
   }
 
@@ -321,9 +424,9 @@
     selectedSkill=null;
     clearEngagement();
     mode="inspect";
-    logs.push(`${unit.character.name} ${reason}`);
+    pushLog(`${unit.character.name} ${reason}`);
     if(allFinished(TEAM.PLAYER)){
-      logs.push("我方所有存活角色皆已完成行動，可結束回合。");
+      pushLog("我方所有存活角色皆已完成行動，可結束回合。");
     }
   }
 
@@ -347,12 +450,13 @@
       outcome+=`｜${defenseText}`;
     }
 
-    logs.push(
-      `[SPD ${spd}] ${roleText}${actor.character.name} → ${target.character.name}：`+
-      `${outcome}｜命中${result.hc}%`+
+    pushLog(`${roleText}${actor.character.name} → ${target.character.name}：${outcome}`,"BATTLE");
+    pushLog(
+      `[SPD ${spd}] ${actor.character.name} → ${target.character.name}｜命中${result.hc}%`+
       `${resolved.terrain.eva?"｜森林EVA+"+resolved.terrain.eva:""}`+
       `${resolved.terrain.acc?"｜高地ACC+"+resolved.terrain.acc:""}`+
-      resourceText
+      resourceText,
+      "DETAIL"
     );
   }
 
@@ -362,18 +466,17 @@
     const guardian=interception?.type==="GUARD_ALLY"?interception.guardian:null;
 
     if(guardian){
-      logs.push(`${guardian.character.name} 援護 ${defender.character.name}，承接 ${attacker.character.name} 的攻擊。`);
+      pushLog(`${guardian.character.name} 援護 ${defender.character.name}，承接 ${attacker.character.name} 的攻擊。`,"BATTLE");
     }
 
-    const engagement=BattleResolution.resolve(
+    BattleResolution.resolve(
       {map,units,initiator:attacker,target:defender,skill,actions:[],reaction,interception},
       {
         canUseSkill,
         consumeSkill,
-        onDefeated:unit=>{
-          stageEvent({type:"UNIT_DEFEATED",unitId:unit.id,characterId:unit.character.id,team:unit.team});
-        },
-        onAction:logBattleAction
+        onDefeated:handleDefeated,
+        onAction:logBattleAction,
+        onPostEffect:logPostEffect
       }
     );
 
@@ -439,6 +542,7 @@
 
       cell.className="tile "+tile.terrain.toLowerCase();
       if(reachable.has(tile.x+","+tile.y)) cell.classList.add("reachable");
+      if(pendingCard&&phase===PHASE.CARD&&DeploymentEngine.canDeploy({stage,map,units,owner:"PLAYER",x:tile.x,y:tile.y})) cell.classList.add("deployable");
       if(unit&&targets.includes(unit)) cell.classList.add("attackable");
       if(unit===selected) cell.classList.add("selected");
 
@@ -458,14 +562,19 @@
 
     renderTurnStatus();
     renderPanel();
-    battleLog.textContent=logs.slice(-12).join("\n");
+    renderLog();
 
     endTurn.disabled=phase!==PHASE.PLAYER||!!matchResult;
-    cancelSelect.disabled=!selected||phase!==PHASE.PLAYER||!!matchResult;
+    cancelSelect.disabled=(!selected&&!pendingCard)||!!matchResult;
   }
 
   function handleTileClick(tile,unit,reachable,targets){
-    if(phase!==PHASE.PLAYER||matchResult) return;
+    if(matchResult)return;
+    if(phase===PHASE.CARD){
+      if(pendingCard&&!unit)deployPendingCard(tile);
+      return;
+    }
+    if(phase!==PHASE.PLAYER) return;
     if(mode==="support-select") return;
 
     if(unit&&unit.team===TEAM.PLAYER){
@@ -481,7 +590,7 @@
       selected.x=tile.x;
       selected.y=tile.y;
       selected.moved=true;
-      logs.push(`${selected.character.name} 移動完成。`);
+      pushLog(`${selected.character.name} 移動完成。`);
       stageEvent({type:"ENTER_TILE",unitId:selected.id,characterId:selected.character.id,x:selected.x,y:selected.y,team:"PLAYER"});
       render();
       return;
@@ -515,7 +624,7 @@
     pendingEngagement={attacker,defender,skill,candidates};
     supportSelection=new Map();
     mode="support-select";
-    logs.push(`可選支援：${candidates.map(x=>x.ally.character.name).join("、")}`);
+    pushLog(`可選支援：${candidates.map(x=>x.ally.character.name).join("、")}`);
     render();
   }
 
@@ -551,10 +660,9 @@
       {
         canUseSkill,
         consumeSkill,
-        onDefeated:unit=>{
-          stageEvent({type:"UNIT_DEFEATED",unitId:unit.id,characterId:unit.character.id,team:unit.team});
-        },
-        onAction:logBattleAction
+        onDefeated:handleDefeated,
+        onAction:logBattleAction,
+        onPostEffect:logPostEffect
       }
     );
 
@@ -580,7 +688,7 @@
     }
 
     if(allFinished(TEAM.PLAYER)){
-      logs.push("我方所有存活角色皆已完成行動，可結束回合。");
+      pushLog("我方所有存活角色皆已完成行動，可結束回合。");
     }
     render();
   }
@@ -593,7 +701,7 @@
       return;
     }
 
-    const phaseName=phase===PHASE.PLAYER?"我方回合":"敵方回合";
+    const phaseName=phase===PHASE.CARD?"卡牌階段":phase===PHASE.PLAYER?"我方戰棋階段":"敵方回合";
     const ready=living(TEAM.PLAYER).filter(u=>!u.acted).length;
     turnStatus.textContent=`Round ${round}｜${phaseName}｜我方可行動 ${ready}/${living(TEAM.PLAYER).length}`;
   }
@@ -765,17 +873,13 @@
     }
 
     const guardianMethods=BattleResolution.guardProfiles(guardian);
-    const counterSkills=BattleResolution.counterSkills({
-      defender,
-      attacker,
-      canUseSkill
-    });
+    const counterSkills=BattleResolution.counterSkills({defender,attacker,canUseSkill});
 
     if(!selectedGuardInterception){
       tacticalInfo.textContent=
         `援護防禦｜${guardian.character.name} 保護 ${defender.character.name}\n`+
         `${attacker.character.name}｜${skill.name}\n`+
-        `請選擇援護者的防禦方式。僅顯示具有 canGuardAlly 的方式。`;
+        `請選擇援護者的防禦方式。`;
 
       guardianMethods.forEach(method=>{
         addActionButton(
@@ -801,25 +905,14 @@
       `${attacker.character.name}｜${skill.name}\n`+
       `攻擊完整轉向援護者；原目標仍可選擇是否反擊。`;
 
-    addActionButton(
-      "援護承受｜原目標不反擊",
-      ()=>executeEnemyAttack(null,selectedGuardInterception)
-    );
-
+    addActionButton("援護承受｜原目標不反擊",()=>executeEnemyAttack(null,selectedGuardInterception));
     counterSkills.forEach(counterSkill=>{
       addActionButton(
         `原目標反擊｜${counterSkill.name}｜${resourceLabel(defender,counterSkill)}`,
-        ()=>executeEnemyAttack(
-          BattleResolution.createReaction("COUNTER",{skill:counterSkill}),
-          selectedGuardInterception
-        )
+        ()=>executeEnemyAttack(BattleResolution.createReaction("COUNTER",{skill:counterSkill}),selectedGuardInterception)
       );
     });
-
-    addActionButton("返回防禦方式",()=>{
-      selectedGuardInterception=null;
-      render();
-    });
+    addActionButton("返回防禦方式",()=>{selectedGuardInterception=null;render();});
   }
 
   function renderPanel(){
@@ -829,6 +922,13 @@
       tacticalInfo.textContent=matchResult==="VICTORY"
         ?"戰鬥勝利。按「重置戰場」可重新開始。"
         :"戰鬥失敗。按「重置戰場」可重新開始。";
+      return;
+    }
+
+    if(phase===PHASE.CARD){
+      tacticalInfo.textContent=pendingCard
+        ?`部署角色卡｜${pendingCard.name}\n請點選戰場上亮起的部署區格子；可手動選擇出生位置。`
+        :`卡牌階段｜💎 ${cardState?.crystals||0}\n請從上方手牌選擇角色卡或卡牌魔法；角色卡需再手動選部署格。`;
       return;
     }
 
@@ -893,12 +993,12 @@
       });
 
       addActionButton("道具",()=>{
-        logs.push(`${selected.character.name}｜道具系統尚未接入。`);
+        pushLog(`${selected.character.name}｜道具系統尚未接入。`);
         render();
       });
 
       addActionButton("對話",()=>{
-        logs.push(`${selected.character.name}｜目前沒有可對話目標。`);
+        pushLog(`${selected.character.name}｜目前沒有可對話目標。`);
         render();
       });
 
@@ -967,11 +1067,32 @@
 
   resetMap.onclick=resetBattle;
   cancelSelect.onclick=()=>{
-    if(phase!==PHASE.PLAYER||matchResult) return;
+    if(matchResult)return;
+    if(phase===PHASE.CARD&&pendingCard){
+      pendingCard=null;
+      pushLog("取消角色卡部署；未消耗水晶。","SYSTEM");
+      render();
+      window.dispatchEvent(new CustomEvent("cardtactics:state"));
+      return;
+    }
+    if(phase!==PHASE.PLAYER)return;
     clearSelection();
     render();
   };
   endTurn.onclick=endPlayerTurn;
+  document.querySelectorAll("[data-log-tab]").forEach(btn=>{
+    btn.onclick=()=>{BattleLog.setActive(logState,btn.dataset.logTab);renderLog();};
+  });
+
+  window.CardTacticsRuntime={
+    getCardState:()=>cardState,
+    getPhase:()=>phase,
+    getPendingCard:()=>pendingCard,
+    playCard:selectCardForPlay,
+    endCardPhase,
+    cancelCard:()=>{pendingCard=null;render();},
+    refresh:render
+  };
 
   resetBattle();
 })();

@@ -26,7 +26,7 @@ window.STAGES={
       {id:"center_outpost",name:"中央中立據點",owner:"NEUTRAL",captureTiles:[{x:3,y:2}],area:[{x:2,y:2},{x:3,y:2},{x:3,y:1},{x:3,y:3}]},
       {id:"enemy_base",name:"敵方本陣",owner:"ENEMY",captureTiles:[{x:7,y:2}],area:[{x:6,y:0},{x:6,y:1},{x:6,y:2},{x:6,y:3},{x:6,y:4},{x:7,y:0},{x:7,y:1},{x:7,y:2},{x:7,y:3},{x:7,y:4}]}
     ],
-    cardRules:{crystalsPerTurn:10},
+    cardRules:{crystalsPerTurn:10,startingHand:3,drawPerTurn:1},
     victory:{type:"DEFEAT_ALL_ENEMIES"},
     defeat:{type:"DEFEAT_ALL_PLAYERS"},
     scriptId:"prototype_script"
