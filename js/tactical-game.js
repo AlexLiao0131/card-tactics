@@ -54,6 +54,17 @@
   }
 
   function beginCardPhase({initial=false}={}){
+    if(cardState.zones.deck.length===0){
+      pendingCard=null;
+      CardPhaseEngine.end(cardState);
+      phase=PHASE.PLAYER;
+      clearSelection();
+      pushLog(`Round ${round}｜牌庫已抽完，跳過卡牌階段，直接進入戰棋階段。`,"SYSTEM");
+      render();
+      window.dispatchEvent(new CustomEvent("cardtactics:state"));
+      return;
+    }
+
     phase=PHASE.CARD;
     clearSelection();
     const handSize=Number(stage.cardRules?.handSize||5);
