@@ -54,7 +54,7 @@
   }
 
   function beginCardPhase({initial=false}={}){
-    if(cardState.zones.deck.length===0){
+    if(cardState.zones.deck.length===0&&cardState.zones.hand.length===0){
       pendingCard=null;
       CardPhaseEngine.end(cardState);
       phase=PHASE.PLAYER;
