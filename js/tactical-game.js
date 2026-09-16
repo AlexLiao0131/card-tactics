@@ -193,6 +193,60 @@
     return unit;
   }
 
+  function captureOwnerForTeam(team){
+    return team===TEAM.PLAYER?"PLAYER":team===TEAM.ENEMY?"ENEMY":null;
+  }
+
+  function resolveDeploymentPointCapture(unit){
+    if(!unit?.alive)return null;
+    const owner=captureOwnerForTeam(unit.team);
+    if(!owner)return null;
+
+    const point=DeploymentEngine.points(stage).find(point=>
+      (point.captureTiles||[]).some(tile=>tile.x===unit.x&&tile.y===unit.y)
+    );
+    if(!point||point.owner===owner)return null;
+
+    const previousOwner=point.owner;
+    if(!DeploymentEngine.capture(stage,point.id,owner))return null;
+
+    const sideName=owner==="PLAYER"?"我方":"敵方";
+    const previousName=previousOwner==="NEUTRAL"?"中立":previousOwner==="PLAYER"?"我方":"敵方";
+    pushLog(`${sideName}佔領「${point.name}」｜${previousName} → ${sideName}。`,"SYSTEM");
+
+    if(owner==="PLAYER"){
+      pushLog(`「${point.name}」部署區已解鎖；下一次卡牌階段可由此部署角色。`,"SYSTEM");
+    }else if(previousOwner==="PLAYER"){
+      pushLog(`「${point.name}」已失去我方部署權。`,"SYSTEM");
+    }
+
+    stageEvent({
+      type:"DEPLOYMENT_POINT_CAPTURED",
+      pointId:point.id,
+      owner,
+      previousOwner,
+      unitId:unit.id,
+      characterId:unit.character.id,
+      x:unit.x,
+      y:unit.y
+    });
+    window.dispatchEvent(new CustomEvent("cardtactics:state"));
+    return point;
+  }
+
+  function enterTile(unit){
+    if(!unit?.alive)return;
+    stageEvent({
+      type:"ENTER_TILE",
+      unitId:unit.id,
+      characterId:unit.character.id,
+      x:unit.x,
+      y:unit.y,
+      team:unit.team===TEAM.PLAYER?"PLAYER":"ENEMY"
+    });
+    resolveDeploymentPointCapture(unit);
+  }
+
   function stageEvent(event){
     if(!stageState)return;
     StageEngine.run(stageState,event,{
@@ -355,7 +409,7 @@
       enemy.x=best.x;
       enemy.y=best.y;
       pushLog(`${enemy.character.name} 移動至 (${best.x},${best.y})。`,"DETAIL");
-      stageEvent({type:"ENTER_TILE",unitId:enemy.id,characterId:enemy.character.id,x:enemy.x,y:enemy.y,team:"ENEMY"});
+      enterTile(enemy);
     }
     enemy.moved=true;
   }
@@ -541,6 +595,14 @@
       const unit=unitAt(tile.x,tile.y);
 
       cell.className="tile "+tile.terrain.toLowerCase();
+      const capturePoint=DeploymentEngine.points(stage).find(point=>
+        (point.captureTiles||[]).some(t=>t.x===tile.x&&t.y===tile.y)
+      );
+      if(capturePoint){
+        cell.classList.add("capture-point");
+        cell.dataset.captureOwner=capturePoint.owner;
+        cell.title=`${capturePoint.name}｜${capturePoint.owner}`;
+      }
       if(reachable.has(tile.x+","+tile.y)) cell.classList.add("reachable");
       if(pendingCard&&phase===PHASE.CARD&&DeploymentEngine.canDeploy({stage,map,units,owner:"PLAYER",x:tile.x,y:tile.y})) cell.classList.add("deployable");
       if(unit&&targets.includes(unit)) cell.classList.add("attackable");
@@ -549,6 +611,7 @@
       const finishedClass=unit&&unit.team===TEAM.PLAYER&&unit.acted?" finished":"";
       cell.innerHTML=
         `<span class="icon">${ICON[tile.terrain]}</span>`+
+        `${capturePoint?`<span class="capture-flag">${capturePoint.owner==="NEUTRAL"?"◇":"◆"}</span>`:""}`+
         `${tile.elevation?`<span class="elev">H${tile.elevation}</span>`:""}`+
         `${unit?(()=>{
           const visual=unit.character.visualId?VisualDatabase.get("characters",unit.character.visualId):null;
@@ -591,7 +654,7 @@
       selected.y=tile.y;
       selected.moved=true;
       pushLog(`${selected.character.name} 移動完成。`);
-      stageEvent({type:"ENTER_TILE",unitId:selected.id,characterId:selected.character.id,x:selected.x,y:selected.y,team:"PLAYER"});
+      enterTile(selected);
       render();
       return;
     }
