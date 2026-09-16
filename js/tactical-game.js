@@ -540,6 +540,10 @@
   function endPlayerTurn(){
     if(phase!==PHASE.PLAYER||matchResult) return;
     pushLog(`Round ${round}｜我方回合結束。`);
+    const endTurnDraws=CardPhaseEngine.resolveTurnEndEffects(cardState,{units,team:TEAM.PLAYER});
+    endTurnDraws.forEach(result=>{
+      if(result.drawn.length)pushLog(`${result.sourceName}｜額外抽牌 ${result.drawn.length} 張。`,"SYSTEM");
+    });
     runEnemyPhase();
   }
 

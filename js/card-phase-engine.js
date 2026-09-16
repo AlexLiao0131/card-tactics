@@ -32,6 +32,19 @@ window.CardPhaseEngine=(()=>{
   function characterDefeated(state,cardId){
     if(cardId)DeckEngine.toGraveyard(state.zones,cardId);
   }
+  function resolveTurnEndEffects(state,{units=[],team="P"}={}){
+    const results=[];
+    for(const unit of units){
+      if(!unit?.alive||unit.team!==team)continue;
+      for(const passive of SkillDatabase.passiveList(unit.character?.passives)){
+        const effect=passive.turnEndEffect;
+        if(effect?.type!=="DRAW")continue;
+        const drawn=DeckEngine.draw(state.zones,Math.max(0,Number(effect.count||0)));
+        results.push({sourceId:passive.id,sourceName:passive.name,unitId:unit.id,drawn});
+      }
+    }
+    return results;
+  }
   function end(state){state.active=false;}
-  return{DEFAULT_CRYSTALS,DEFAULT_HAND_SIZE,create,begin,canPlay,commit,characterDefeated,end};
+  return{DEFAULT_CRYSTALS,DEFAULT_HAND_SIZE,create,begin,canPlay,commit,characterDefeated,resolveTurnEndEffects,end};
 })();
