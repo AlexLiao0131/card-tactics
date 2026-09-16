@@ -29,3 +29,9 @@ details{margin-top:14px}summary{padding:12px;cursor:pointer}
 .deployable{outline:3px solid #70e38b;outline-offset:-3px;box-shadow:inset 0 0 0 2px rgba(112,227,139,.25)}
 .log-tabs button.active,.hand-card.active{outline:2px solid currentColor;font-weight:800}
 .empty-hand{padding:12px;color:#aab4c0}
+
+.capture-point{position:relative}
+.capture-flag{position:absolute;left:50%;top:2px;transform:translateX(-50%);font-size:13px;line-height:1;z-index:3;text-shadow:0 1px 2px #000}
+.capture-point[data-capture-owner="PLAYER"]{box-shadow:inset 0 0 0 2px #4da6ff}
+.capture-point[data-capture-owner="ENEMY"]{box-shadow:inset 0 0 0 2px #ff5e5e}
+.capture-point[data-capture-owner="NEUTRAL"]{box-shadow:inset 0 0 0 2px #d4b85a}
