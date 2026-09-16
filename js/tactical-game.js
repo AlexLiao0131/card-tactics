@@ -100,7 +100,11 @@
     if(CardDatabase.isSpell(card)){
       if(!CardPhaseEngine.commit(cardState,card))return false;
       pushLog(`施放卡牌魔法「${card.name}」｜消耗 ${card.cost} 水晶。`,"SYSTEM");
-      if(card.effect?.type==="WEATHER")pushLog(`天候變更：${card.effect.weather}（目前為卡牌效果流程測試）。`,"SYSTEM");
+      if(card.effect?.type==="WEATHER"){
+        const weather=card.effect.weather==="RAIN"?"HEAVY_RAIN":card.effect.weather;
+        if(environmentState)EnvironmentEngine.setWeather(environmentState,weather);
+        pushLog(`天候變更：${weather==="HEAVY_RAIN"?"豪大雨":weather}。`,"SYSTEM");
+      }
       pendingCard=null;
       render();
       window.dispatchEvent(new CustomEvent("cardtactics:state"));
@@ -260,6 +264,27 @@
     return point;
   }
 
+  function applyEnvironmentHazardToUnit(unit,{reason="環境"}={}){
+    if(!environmentState||!unit?.alive)return 0;
+    const burning=EnvironmentEngine.effectAt(environmentState,unit.x,unit.y).find(effect=>effect.type===EnvironmentEngine.EFFECT.BURNING);
+    if(!burning)return 0;
+    const damage=Math.max(0,Number(burning.damage||EnvironmentEngine.HAZARD?.BURNING_DAMAGE||0));
+    if(damage<=0)return 0;
+    unit.hp=Math.max(0,unit.hp-damage);
+    pushLog(`${unit.character.name} ${reason}｜燃燒傷害 ${damage}｜HP ${unit.hp}。`,"BATTLE");
+    if(unit.hp<=0&&unit.alive){
+      unit.alive=false;
+      pushLog(`${unit.character.name} 被環境火焰擊倒。`,"BATTLE");
+      handleDefeated(unit,null,{type:"BURNING",source:"ENVIRONMENT"});
+    }
+    return damage;
+  }
+
+  function applyEnvironmentHazards({reason="持續燃燒"}={}){
+    if(!environmentState)return;
+    [...living(TEAM.PLAYER),...living(TEAM.ENEMY)].forEach(unit=>applyEnvironmentHazardToUnit(unit,{reason}));
+  }
+
   function enterTile(unit){
     if(!unit?.alive)return;
     stageEvent({
@@ -271,6 +296,7 @@
       team:unit.team===TEAM.PLAYER?"PLAYER":"ENEMY"
     });
     resolveDeploymentPointCapture(unit);
+    applyEnvironmentHazardToUnit(unit,{reason:"踏入燃燒區"});
   }
 
   function stageEvent(event){
@@ -369,6 +395,18 @@
     return false;
   }
 
+  function resolveWeatherEvents(){
+    if(!environmentState)return;
+    for(const event of EnvironmentEngine.rollWeatherEvent({map,state:environmentState,units})){
+      if(event.type!=="LIGHTNING_STRIKE")continue;
+      const unit=event.unit;if(!unit?.alive)continue;
+      const names=(event.riskReasons||[]).map(r=>r==="METAL"?"金屬裝備":r==="WATER"?"水域":"樹木／森林");
+      unit.hp=Math.max(0,unit.hp-Number(event.damage||0));
+      pushLog(`⚡ 落雷擊中 ${unit.character.name}｜${event.damage} 傷害｜HP ${unit.hp}${names.length?`｜高風險：${names.join("＋")}`:""}。`,"BATTLE");
+      if(unit.hp<=0&&unit.alive){unit.alive=false;handleDefeated(unit,null,{type:"LIGHTNING"});}
+    }
+  }
+
   function beginPlayerTurn(){
     round++;
     phase=PHASE.PLAYER;
@@ -378,7 +416,13 @@
     enemyQueue=[];
     pushLog(`Round ${round}｜我方回合開始。`,"SYSTEM");
     stageEvent({type:"ROUND_START",round,team:"PLAYER"});
-    if(environmentState)EnvironmentEngine.tick(environmentState);
+    if(environmentState){
+      applyEnvironmentHazards({reason:"回合開始仍處於燃燒區"});
+      if(checkMatchEnd()){render();return;}
+      EnvironmentEngine.tick(environmentState);
+      resolveWeatherEvents();
+      if(checkMatchEnd()){render();return;}
+    }
     beginCardPhase();
   }
 
@@ -633,7 +677,13 @@
         :[];
       events.forEach(logEnvironmentEvent);
     });
+    affected.forEach(tile=>{
+      if(!EnvironmentEngine.effectAt(environmentState,tile.x,tile.y).some(effect=>effect.type===EnvironmentEngine.EFFECT.BURNING))return;
+      const occupant=unitAt(tile.x,tile.y);
+      if(occupant)applyEnvironmentHazardToUnit(occupant,{reason:"遭燃燒地形波及"});
+    });
     pushLog(`${attacker.character.name} 使用 ${skill.name}｜中心 (${center.x},${center.y})。`,"BATTLE");
+    if(checkMatchEnd()){selectedSkill=null;selectedSkillVariant=null;render();return true;}
     attacker.moved=true;attacker.acted=true;attacker.waited=true;
     selectedSkill=null;selectedSkillVariant=null;mode="inspect";
     render();

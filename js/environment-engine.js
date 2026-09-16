@@ -2,6 +2,10 @@ window.EnvironmentEngine=(()=>{
   const ELEMENT={NONE:"NONE",GRASS:"GRASS",WATER:"WATER",STONE:"STONE"};
   const FORCE={FIRE:"FIRE",HEAVY_FIRE:"HEAVY_FIRE",EXPLOSION:"EXPLOSION"};
   const EFFECT={BURNING:"BURNING",STEAM:"STEAM",FRAGMENTS:"FRAGMENTS"};
+  const WEATHER={CLEAR:"CLEAR",FOG:"FOG",RAIN:"RAIN",HEAVY_RAIN:"HEAVY_RAIN"};
+  const WEATHER_RULES={HEAVY_RAIN:{lightningChance:0.35,lightningDamage:60,metalWeight:2,waterWeight:2,treeWeight:2}};
+  const METAL_EQUIPMENT_IDS=new Set(["black_sword","imperial_sword","standard_sword","blessed_sword","imperial_spear","imperial_hammer","imperial_medium_armor","imperial_heavy_shield_armor","water_medium_armor","imperial_heavy_armor","imperial_heavy_plate","imperial_large_shield"]);
+  const HAZARD={BURNING_DAMAGE:20};
 
   function key(x,y){ return `${x},${y}`; }
   function tileAt(map,x,y){ return map?.tiles?.find(t=>t.x===x&&t.y===y)||null; }
@@ -14,9 +18,10 @@ window.EnvironmentEngine=(()=>{
     return TERRAINS[tile?.terrain]?.environment||ELEMENT.NONE;
   }
 
-  function create({timeOfDay="DAY"}={}){
+  function create({timeOfDay="DAY",weather="CLEAR"}={}){
     return {
       timeOfDay,
+      weather:weather||WEATHER.CLEAR,
       effects:new Map(),
       destroyedObjects:new Set()
     };
@@ -24,6 +29,29 @@ window.EnvironmentEngine=(()=>{
 
   function setTimeOfDay(state,timeOfDay){
     state.timeOfDay=timeOfDay==="NIGHT"?"NIGHT":"DAY";
+  }
+  function setWeather(state,weather){if(state)state.weather=WEATHER[weather]?weather:WEATHER.CLEAR;}
+  function hasMetalEquipment(unit){
+    return EquipmentDatabase.equippedItems(unit?.character).some(item=>item?.material==="METAL"||item?.conductive===true||METAL_EQUIPMENT_IDS.has(item?.id));
+  }
+  function lightningRisk(map,unit){
+    if(!unit?.alive)return {weight:0,reasons:[]};
+    const rules=WEATHER_RULES.HEAVY_RAIN; let weight=1; const reasons=[];
+    if(hasMetalEquipment(unit)){weight*=rules.metalWeight;reasons.push("METAL");}
+    const material=environmentAt(map,unit.x,unit.y);
+    if(material===ELEMENT.WATER){weight*=rules.waterWeight;reasons.push("WATER");}
+    if(material===ELEMENT.GRASS){weight*=rules.treeWeight;reasons.push("TREE");}
+    return {weight,reasons};
+  }
+  function rollWeatherEvent({map,state,units=[],random=Math.random}){
+    if(!state||state.weather!==WEATHER.HEAVY_RAIN)return [];
+    const rules=WEATHER_RULES.HEAVY_RAIN;
+    if(random()>=rules.lightningChance)return [];
+    const candidates=units.filter(u=>u?.alive).map(unit=>({unit,...lightningRisk(map,unit)})).filter(x=>x.weight>0);
+    if(!candidates.length)return [];
+    let roll=random()*candidates.reduce((n,x)=>n+x.weight,0),chosen=candidates[candidates.length-1];
+    for(const candidate of candidates){roll-=candidate.weight;if(roll<=0){chosen=candidate;break;}}
+    return [{type:"LIGHTNING_STRIKE",unit:chosen.unit,x:chosen.unit.x,y:chosen.unit.y,damage:rules.lightningDamage,riskReasons:chosen.reasons,weight:chosen.weight}];
   }
 
   function effectAt(state,x,y){
@@ -64,7 +92,7 @@ window.EnvironmentEngine=(()=>{
     const events=[];
 
     if(environment===ELEMENT.GRASS&&(forceSet.has(FORCE.FIRE)||forceSet.has(FORCE.HEAVY_FIRE))){
-      addEffect(state,x,y,{type:EFFECT.BURNING,duration:3,lightRadius:2,fireIntensity:forceSet.has(FORCE.HEAVY_FIRE)?"HEAVY":"NORMAL"});
+      addEffect(state,x,y,{type:EFFECT.BURNING,duration:3,lightRadius:2,damage:HAZARD.BURNING_DAMAGE,damageType:"FIRE",fireIntensity:forceSet.has(FORCE.HEAVY_FIRE)?"HEAVY":"NORMAL"});
       events.push({type:"IGNITE",x,y,effect:EFFECT.BURNING});
     }
 
@@ -125,8 +153,9 @@ window.EnvironmentEngine=(()=>{
   }
 
   return {
-    ELEMENT,FORCE,EFFECT,
-    create,setTimeOfDay,
+    ELEMENT,FORCE,EFFECT,HAZARD,WEATHER,WEATHER_RULES,
+    create,setTimeOfDay,setWeather,
+    lightningRisk,rollWeatherEvent,
     environmentAt,effectAt,
     apply,tick,
     lightSources,isLit,visionModifier
