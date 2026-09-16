@@ -1,6 +1,15 @@
 window.SKILLS={
   bow_shot:{id:"bow_shot",name:"普通射擊",category:"ATTACK",weapon:"kahns_bow",power:1,range:{min:2,max:4},attackType:"INHERIT",element:"INHERIT",speed:0,target:"ENEMY",support:true,resource:{type:"UNLIMITED"},affixes:[]},
-  fire_arrow:{id:"fire_arrow",name:"火焰附魔箭",category:"ATTACK",weapon:"kahns_bow",power:1,range:{min:2,max:4},attackType:"INHERIT",element:"FIRE",speed:0,target:"ENEMY",support:true,resource:{type:"USES",max:3},affixes:[]},
+  fire_arrow:{
+    id:"fire_arrow",name:"火焰附魔箭",category:"ATTACK",weapon:"kahns_bow",power:1,
+    range:{min:2,max:4},attackType:"INHERIT",element:"FIRE",speed:0,target:"ENEMY",
+    targetType:"SINGLE",support:true,resource:{type:"USES",max:3},affixes:[],
+    statusEffects:[{type:"BURN",chance:100}],
+    variants:[
+      {id:"SINGLE",name:"火焰箭・單體",targetType:"SINGLE",damageParts:["WEAPON","FIRE"],statusEffects:[{type:"BURN",chance:100}]},
+      {id:"MAP_AOE",name:"爆裂火焰箭",targetType:"AOE",target:"TILE",radius:1,damageParts:["FIRE"],environmentForces:["FIRE","EXPLOSION"]}
+    ]
+  },
   black_slash:{id:"black_slash",name:"黑劍斬擊",category:"ATTACK",weapon:"black_sword",power:1,range:{min:1,max:1},attackType:"INHERIT",element:"INHERIT",speed:0,target:"ENEMY",support:false,resource:{type:"UNLIMITED"},affixes:[]},
   fire_black_slash:{id:"fire_black_slash",name:"火焰附魔・黑劍",category:"ATTACK",weapon:"black_sword",power:1,range:{min:1,max:1},attackType:"INHERIT",element:"FIRE",speed:0,target:"ENEMY",support:false,resource:{type:"USES",max:3},affixes:[]},
   slash:{id:"slash",name:"制式斬擊",category:"ATTACK",weapon:"sword",power:1,range:{min:1,max:1},attackType:"INHERIT",element:"INHERIT",speed:0,target:"ENEMY",support:false,resource:{type:"UNLIMITED"},affixes:[]},

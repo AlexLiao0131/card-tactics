@@ -10,6 +10,10 @@ window.MAPS={
       {x:3,y:1,terrain:"HIGH_GROUND",elevation:2},{x:4,y:1,terrain:"HIGH_GROUND",elevation:2},
       {x:3,y:3,terrain:"WATER"},{x:3,y:4,terrain:"WATER"},{x:4,y:4,terrain:"WATER"},
       {x:4,y:2,terrain:"WALL"},{x:5,y:2,terrain:"WALL"}
+    ],
+    objects:[
+      {id:"test_rock_1",x:4,y:2,type:"ROCK",environment:"STONE",destructible:true,blocksMovement:true,breaksIntoTerrain:"PLAIN"},
+      {id:"test_rock_2",x:5,y:2,type:"ROCK",environment:"STONE",destructible:true,blocksMovement:true,breaksIntoTerrain:"PLAIN"}
     ]
   }
 };
@@ -27,7 +31,10 @@ window.MapDatabase=(()=>{
       const tile=tiles.find(t=>t.x===data.x&&t.y===data.y);
       if(tile) Object.assign(tile,data);
     });
-    return {id:src.id,name:src.name,width:src.width,height:src.height,tiles};
+    return {
+      id:src.id,name:src.name,width:src.width,height:src.height,tiles,
+      objects:JSON.parse(JSON.stringify(src.objects||[]))
+    };
   }
   return {get,createMap};
 })();

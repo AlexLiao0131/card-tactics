@@ -3,6 +3,7 @@ window.STAGES={
     id:"prototype_battle",
     name:"Prototype Battle",
     mapId:"prototype_field",
+    environment:{timeOfDay:"NIGHT"},
 
     // STAGE source: these actors are forced by the scenario, not drawn from the battle deck.
     playerSpawns:[
