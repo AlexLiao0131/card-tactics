@@ -25,3 +25,7 @@ details{margin-top:14px}summary{padding:12px;cursor:pointer}
 .hand{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.hand-card{min-height:74px}.hand-card small{display:block;margin-top:6px;color:#aab4c0}
 .card-phase-actions,.log-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px}.card-phase-actions{grid-template-columns:1fr 1fr}
 @media(max-width:700px){.grid{grid-template-columns:1fr}.toolbar{grid-template-columns:1fr 1fr}.toolbar #endTurn{grid-column:1/-1}.battlefield{gap:2px}.tile,.unit{font-size:8px}.hand{grid-template-columns:1fr 1fr}}
+
+.deployable{outline:3px solid #70e38b;outline-offset:-3px;box-shadow:inset 0 0 0 2px rgba(112,227,139,.25)}
+.log-tabs button.active,.hand-card.active{outline:2px solid currentColor;font-weight:800}
+.empty-hand{padding:12px;color:#aab4c0}
