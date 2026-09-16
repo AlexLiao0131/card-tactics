@@ -45,5 +45,8 @@ window.STAGES={
   }
 };
 window.StageDatabase=(()=>({
-  get(id){return STAGES[id]||null;}
+  get(id){
+    const stage=STAGES[id];
+    return stage?JSON.parse(JSON.stringify(stage)):null;
+  }
 }))();
