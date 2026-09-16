@@ -56,8 +56,8 @@
   function beginCardPhase({initial=false}={}){
     phase=PHASE.CARD;
     clearSelection();
-    const draw=initial?Number(stage.cardRules?.startingHand||3):Number(stage.cardRules?.drawPerTurn||1);
-    const drawn=CardPhaseEngine.begin(cardState,{draw});
+    const handSize=Number(stage.cardRules?.handSize||5);
+    const drawn=CardPhaseEngine.begin(cardState,{handSize});
     pushLog(`Round ${round}｜卡牌階段開始｜💎 ${cardState.crystals}。`,"SYSTEM");
     if(drawn.length)pushLog(`抽牌 ${drawn.length} 張。`,"SYSTEM");
     pendingCard=null;
@@ -150,8 +150,20 @@
     units=[];
     unitSerial=0;
     logState=BattleLog.create();
-    const demoDeck=["livia_card","imperial_swordsman_card","imperial_swordsman_card","imperial_spearman_card","imperial_mage_card","fog_card","rain_card","resurrection_card"];
-    cardState=CardPhaseEngine.create({deck:demoDeck,crystalsPerTurn:Number(stage.cardRules?.crystalsPerTurn||10)});
+    const forcedHeroIds=new Set(
+      (stage.playerSpawns||[])
+        .filter(spawn=>spawn.source==="STAGE")
+        .map(spawn=>spawn.characterId)
+    );
+    const battleDeck=(stage.battleDeck||[]).filter(cardId=>{
+      const card=CardDatabase.get(cardId);
+      return !(CardDatabase.isCharacter(card)&&card.unitType==="HERO"&&forcedHeroIds.has(card.characterId));
+    });
+    cardState=CardPhaseEngine.create({
+      deck:battleDeck,
+      crystalsPerTurn:Number(stage.cardRules?.crystalsPerTurn||10),
+      handSize:Number(stage.cardRules?.handSize||5)
+    });
     DeckEngine.shuffle(cardState.zones);
 
     stage.playerSpawns.forEach((u,i)=>units.push(createUnit("p"+i,TEAM.PLAYER,u.characterId,u.x,u.y)));

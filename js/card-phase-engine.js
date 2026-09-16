@@ -1,19 +1,22 @@
 window.CardPhaseEngine=(()=>{
   const DEFAULT_CRYSTALS=10;
-  function create({deck=[],crystalsPerTurn=DEFAULT_CRYSTALS}={}){
+  const DEFAULT_HAND_SIZE=5;
+  function create({deck=[],crystalsPerTurn=DEFAULT_CRYSTALS,handSize=DEFAULT_HAND_SIZE}={}){
     return{
       zones:DeckEngine.create(deck),
       crystals:0,
       crystalsPerTurn,
+      handSize,
       active:false,
       played:[]
     };
   }
-  function begin(state,{draw=1}={}){
+  function begin(state,{handSize=state.handSize||DEFAULT_HAND_SIZE}={}){
     state.active=true;
     state.crystals=state.crystalsPerTurn;
     state.played=[];
-    return DeckEngine.draw(state.zones,draw);
+    const missing=Math.max(0,Number(handSize||0)-state.zones.hand.length);
+    return DeckEngine.draw(state.zones,missing);
   }
   function canPlay(state,card){
     return !!state.active&&!!card&&state.zones.hand.includes(card.id)&&state.crystals>=Number(card.cost||0);
@@ -30,5 +33,5 @@ window.CardPhaseEngine=(()=>{
     if(cardId)DeckEngine.toGraveyard(state.zones,cardId);
   }
   function end(state){state.active=false;}
-  return{DEFAULT_CRYSTALS,create,begin,canPlay,commit,characterDefeated,end};
+  return{DEFAULT_CRYSTALS,DEFAULT_HAND_SIZE,create,begin,canPlay,commit,characterDefeated,end};
 })();
