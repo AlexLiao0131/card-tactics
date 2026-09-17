@@ -1,15 +1,25 @@
 window.CARDS={
   livia_card:{id:"livia_card",name:"莉維亞",type:"CHARACTER",characterId:"livia",faction:"HUNTER",unitType:"HERO",cost:6},
-  imperial_swordsman_card:{id:"imperial_swordsman_card",name:"帝國劍士",type:"CHARACTER",characterId:"imperial_swordsman",faction:"IMPERIAL",unitType:"UNIT",cost:2},
-  imperial_spearman_card:{id:"imperial_spearman_card",name:"帝國槍兵",type:"CHARACTER",characterId:"imperial_spearman_test",faction:"IMPERIAL",unitType:"UNIT",cost:3},
-  imperial_mage_card:{id:"imperial_mage_card",name:"帝國法師",type:"CHARACTER",characterId:"imperial_mage_test",faction:"IMPERIAL",unitType:"UNIT",cost:4},
-  fog_card:{id:"fog_card",name:"濃霧",type:"SPELL",spellType:"WEATHER",faction:"NEUTRAL",cost:2,effect:{type:"WEATHER",weather:"FOG"}},
+  leon_card:{id:"leon_card",name:"第一劍士・雷昂",type:"CHARACTER",characterId:"leon",faction:"IMPERIAL",unitType:"HERO",cost:6},
+  kahn_card:{id:"kahn_card",name:"卡恩",type:"CHARACTER",characterId:"kahn",faction:"HUNTER",unitType:"HERO",cost:6},
+  cassandra_card:{id:"cassandra_card",name:"卡珊多拉",type:"CHARACTER",characterId:"cassandra",faction:"HUNTER",unitType:"HERO",cost:6},
+  imperial_swordsman_card:{id:"imperial_swordsman_card",name:"帝國劍兵",type:"CHARACTER",characterId:"imperial_swordsman",faction:"IMPERIAL",unitType:"UNIT",cost:3},
+  imperial_spearman_card:{id:"imperial_spearman_card",name:"帝國槍兵",type:"CHARACTER",characterId:"imperial_spearman",faction:"IMPERIAL",unitType:"UNIT",cost:3},
+  imperial_archer_card:{id:"imperial_archer_card",name:"帝國弓手",type:"CHARACTER",characterId:"imperial_archer",faction:"IMPERIAL",unitType:"UNIT",cost:3},
+  imperial_heavy_guard_card:{id:"imperial_heavy_guard_card",name:"帝國重甲兵",type:"CHARACTER",characterId:"imperial_heavy_guard",faction:"IMPERIAL",unitType:"UNIT",cost:4},
+  imperial_hammer_card:{id:"imperial_hammer_card",name:"帝國錘兵",type:"CHARACTER",characterId:"imperial_hammer",faction:"IMPERIAL",unitType:"UNIT",cost:4},
+  imperial_mage_card:{id:"imperial_mage_card",name:"帝國法師",type:"CHARACTER",characterId:"imperial_mage",faction:"IMPERIAL",unitType:"UNIT",cost:4},
+  imperial_cavalry_card:{id:"imperial_cavalry_card",name:"帝國騎兵",type:"CHARACTER",characterId:"imperial_cavalry",faction:"IMPERIAL",unitType:"UNIT",cost:5},
+  thunderstorm_card:{id:"thunderstorm_card",name:"雷雨",type:"SPELL",spellType:"WEATHER",faction:"NEUTRAL",cost:5,effect:{type:"WEATHER",weather:"HEAVY_RAIN"}},
+  wildfire_card:{id:"wildfire_card",name:"野火",type:"SPELL",spellType:"TACTICAL",faction:"NEUTRAL",cost:4,effect:{type:"AREA_FIRE"}},
+  tornado_card:{id:"tornado_card",name:"龍捲風",type:"SPELL",spellType:"TACTICAL",faction:"NEUTRAL",cost:5,effect:{type:"AREA_PUSH"}},
+  miracle_card:{id:"miracle_card",name:"神跡",type:"SPELL",spellType:"HEAL",faction:"NEUTRAL",cost:6,effect:{type:"AREA_HEAL"}},
+  fog_card:{id:"fog_card",name:"迷霧",type:"SPELL",spellType:"WEATHER",faction:"NEUTRAL",cost:3,effect:{type:"WEATHER",weather:"FOG"}},
+  starfall_card:{id:"starfall_card",name:"星隕",type:"SPELL",spellType:"TACTICAL",faction:"NEUTRAL",cost:10,effect:{type:"AREA_DAMAGE"}},
+  bear_trap_card:{id:"bear_trap_card",name:"捕熊陷阱",type:"SPELL",spellType:"TRAP",faction:"HUNTER",cost:2,effect:{type:"TRAP"}},
+  avalanche_card:{id:"avalanche_card",name:"雪崩",type:"SPELL",spellType:"TACTICAL",faction:"HUNTER",cost:6,effect:{type:"AREA_DAMAGE_PUSH"}},
+  cassandra_blessing_card:{id:"cassandra_blessing_card",name:"卡珊多拉的祝福",type:"SPELL",spellType:"BUFF",faction:"HUNTER",cost:4,effect:{type:"BUFF"}},
   rain_card:{id:"rain_card",name:"豪大雨",type:"SPELL",spellType:"WEATHER",faction:"NEUTRAL",cost:4,effect:{type:"WEATHER",weather:"HEAVY_RAIN"}},
   resurrection_card:{id:"resurrection_card",name:"復甦",type:"SPELL",spellType:"REVIVE",faction:"NEUTRAL",cost:7,effect:{type:"REVIVE",zone:"GRAVEYARD"}}
 };
-window.CardDatabase=(()=>({
-  get(id){return CARDS[id]||null;},
-  list(ids){return(ids||[]).map(id=>CARDS[id]).filter(Boolean);},
-  isCharacter(card){return card?.type==="CHARACTER";},
-  isSpell(card){return card?.type==="SPELL";}
-}))();
+window.CardDatabase=(()=>({get(id){return CARDS[id]||null;},list(ids){return(ids||[]).map(id=>CARDS[id]).filter(Boolean);},isCharacter(card){return card?.type==="CHARACTER";},isSpell(card){return card?.type==="SPELL";}}))();

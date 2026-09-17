@@ -659,7 +659,24 @@
   function skillVariants(skill){return Array.isArray(skill?.variants)?skill.variants:[];}
   function mapTargetTiles(attacker,skill){
     const range=TacticalEngine.range(skill);
-    return map.tiles.filter(tile=>{const d=Math.abs(attacker.x-tile.x)+Math.abs(attacker.y-tile.y);return d>=range.min&&d<=range.max;});
+    return map.tiles.filter(tile=>{
+      const d=Math.abs(attacker.x-tile.x)+Math.abs(attacker.y-tile.y);
+      if(d<range.min||d>range.max)return false;
+      if(skill.shape==="LINE"){
+        if(attacker.x!==tile.x&&attacker.y!==tile.y)return false;
+        if(skill.moveToTarget&&unitAt(tile.x,tile.y))return false;
+      }
+      return true;
+    });
+  }
+  function lineTiles(attacker,end){
+    const dx=Math.sign(end.x-attacker.x),dy=Math.sign(end.y-attacker.y);
+    if(dx&&dy)return [];
+    const out=[];
+    let x=attacker.x+dx,y=attacker.y+dy;
+    while(x!==end.x||y!==end.y){out.push(map.tiles.find(t=>t.x===x&&t.y===y));x+=dx;y+=dy;}
+    out.push(map.tiles.find(t=>t.x===end.x&&t.y===end.y));
+    return out.filter(Boolean);
   }
   function aoeTiles(center,radius){
     const r=Number(radius||0);
@@ -674,7 +691,18 @@
   function executeMapSkill(attacker,center,skill){
     if(!canUseSkill(attacker,skill))return false;
     consumeSkill(attacker,skill);
-    const affected=aoeTiles(center,skill.radius||0);
+    const affected=skill.shape==="LINE"?lineTiles(attacker,center):aoeTiles(center,skill.radius||0);
+    if(skill.shape==="LINE"){
+      affected.forEach(tile=>{
+        const occupant=unitAt(tile.x,tile.y);
+        if(!occupant||occupant.team===attacker.team)return;
+        const result=BattleEngine.calculate(attacker.character,occupant.character,skill);
+        if(!result.hit){pushLog(`${attacker.character.name} → ${occupant.character.name}｜${skill.name} MISS。`,"BATTLE");return;}
+        occupant.hp=Math.max(0,occupant.hp-result.damage);
+        pushLog(`${attacker.character.name} → ${occupant.character.name}｜${skill.name} ${result.damage} 傷害｜HP ${occupant.hp}。`,"BATTLE");
+        if(occupant.hp<=0&&occupant.alive){occupant.alive=false;handleDefeated(occupant,attacker,skill);}
+      });
+    }
     affected.forEach(tile=>{
       const events=environmentState&&skill.environmentForces
         ?EnvironmentEngine.apply({map,state:environmentState,x:tile.x,y:tile.y,forces:skill.environmentForces})
@@ -687,6 +715,10 @@
       if(occupant)applyEnvironmentHazardToUnit(occupant,{reason:"遭燃燒地形波及"});
     });
     pushLog(`${attacker.character.name} 使用 ${skill.name}｜中心 (${center.x},${center.y})。`,"BATTLE");
+    if(skill.moveToTarget&&!unitAt(center.x,center.y)){
+      attacker.x=center.x;attacker.y=center.y;enterTile(attacker);
+      pushLog(`${attacker.character.name} 隨 ${skill.name} 移動至 (${center.x},${center.y})。`,"BATTLE");
+    }
     if(checkMatchEnd()){selectedSkill=null;selectedSkillVariant=null;render();return true;}
     attacker.moved=true;attacker.acted=true;attacker.waited=true;
     selectedSkill=null;selectedSkillVariant=null;mode="inspect";
