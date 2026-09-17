@@ -1,0 +1,36 @@
+/* Card Tactics Phaser Battle View
+   Visual-only layer. Existing TacticalEngine / battle rules remain authoritative. */
+.battle-screen main{max-width:1600px}
+.phaser-battlefield{
+  width:100%;
+  height:clamp(520px,68vh,900px);
+  min-height:520px;
+  overflow:hidden;
+  border:1px solid #4a5666;
+  border-radius:12px;
+  background:#111820;
+  touch-action:none;
+  position:relative;
+}
+.phaser-battlefield canvas{display:block;width:100%!important;height:100%!important;touch-action:none}
+.battlefield.phaser-source{
+  position:absolute!important;
+  width:1px!important;height:1px!important;
+  overflow:hidden!important;
+  opacity:0!important;
+  pointer-events:none!important;
+  clip-path:inset(50%)!important;
+}
+.phaser-battlefield::after{
+  content:"拖曳移動視野 · 滾輪 / 雙指縮放";
+  position:absolute;right:10px;bottom:8px;
+  z-index:2;pointer-events:none;
+  font-size:11px;color:#d8e1ecaa;
+  background:#081018aa;border:1px solid #53606d88;
+  border-radius:6px;padding:5px 8px;
+}
+@media(max-width:700px){
+  .battle-screen main{padding:8px}
+  .phaser-battlefield{height:58vh;min-height:420px;border-radius:8px}
+  .phaser-battlefield::after{font-size:10px}
+}
