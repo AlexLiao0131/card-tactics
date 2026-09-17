@@ -25,15 +25,43 @@ details{margin-top:14px}summary{padding:12px;cursor:pointer}
 .hand{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.hand-card{min-height:74px}.hand-card small{display:block;margin-top:6px;color:#aab4c0}
 .card-phase-actions,.log-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px}.card-phase-actions{grid-template-columns:1fr 1fr}
 @media(max-width:700px){.grid{grid-template-columns:1fr}.toolbar{grid-template-columns:1fr 1fr}.toolbar #endTurn{grid-column:1/-1}.battlefield{gap:2px}.tile,.unit{font-size:8px}.hand{grid-template-columns:1fr 1fr}}
-
 .deployable{outline:3px solid #70e38b;outline-offset:-3px;box-shadow:inset 0 0 0 2px rgba(112,227,139,.25)}
 .log-tabs button.active,.hand-card.active{outline:2px solid currentColor;font-weight:800}
 .empty-hand{padding:12px;color:#aab4c0}
-
 .capture-point{position:relative}
 .capture-flag{position:absolute;left:50%;top:2px;transform:translateX(-50%);font-size:13px;line-height:1;z-index:3;text-shadow:0 1px 2px #000}
 .capture-point[data-capture-owner="PLAYER"]{box-shadow:inset 0 0 0 2px #4da6ff}
 .capture-point[data-capture-owner="ENEMY"]{box-shadow:inset 0 0 0 2px #ff5e5e}
 .capture-point[data-capture-owner="NEUTRAL"]{box-shadow:inset 0 0 0 2px #d4b85a}
-
 .tile-inspected{box-shadow:inset 0 0 0 2px #ffd166}
+
+
+.game-screen{display:none;min-height:100vh}.game-screen.active{display:block}
+.title-screen,.menu-screen{position:relative;background:url("../assets/ui/title-cover.png") center/cover no-repeat;overflow:hidden}
+.title-shade{position:absolute;inset:0;background:linear-gradient(90deg,rgba(3,8,16,.22),rgba(3,8,16,.08) 45%,rgba(3,8,16,.72))}
+.title-copy{position:absolute;right:6vw;top:16vh;width:min(520px,42vw);text-align:center;text-shadow:0 3px 14px #000}
+.title-copy h1,.game-logo{font-family:Georgia,serif;letter-spacing:.08em;font-size:clamp(34px,5vw,72px);margin:0;color:#f3ead7}
+.title-copy p{font-size:clamp(14px,1.6vw,22px);letter-spacing:.16em}.press-start{margin-top:10vh;font-size:20px;background:rgba(8,15,25,.68);border-color:#cdb98d}
+.menu-screen:before{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent 25%,rgba(4,8,14,.18) 48%,rgba(4,8,14,.78) 70%)}
+.menu-panel{position:absolute;right:5vw;top:8vh;width:min(480px,40vw)}
+.game-logo{font-size:clamp(32px,4vw,58px);text-align:center;margin-bottom:5vh}.game-logo small{display:block;font:12px system-ui;letter-spacing:.35em;color:#c9c0ad}
+.menu-panel>button{min-height:76px;text-align:left;padding:12px 28px;font:600 26px Georgia,serif;background:rgba(8,15,25,.78);border:1px solid #bda97e;box-shadow:inset 0 0 24px rgba(255,220,150,.05)}
+.menu-panel>button:hover{transform:translateX(-8px);border-color:#ffe1a1}.menu-panel button small{display:block;font:11px system-ui;letter-spacing:.2em;color:#c6bda9;margin-top:4px}
+.shell-screen{background:radial-gradient(circle at 20% 0,#263247,#0a0f17 58%);padding:5vh 4vw}
+.shell-panel,.deck-builder{max-width:1200px;margin:auto;background:rgba(9,14,22,.92);border:1px solid #6d6048;border-radius:16px;padding:24px;box-shadow:0 20px 70px #0008}
+.shell-panel{max-width:720px;margin-top:10vh}.stage-card{min-height:100px;text-align:left;border-color:#9d8557}.stage-card strong,.stage-card span{display:block}.stage-card strong{font-size:22px}.stage-card span{color:#aaa;margin-top:8px}
+.deck-builder header{display:flex;align-items:center;justify-content:space-between;gap:15px}.deck-builder header button{width:auto}
+.pack-tabs{display:flex;gap:8px;overflow-x:auto;padding:10px 0}.pack-tab{width:auto;white-space:nowrap}.pack-tab.active{border-color:#f0cf87;box-shadow:inset 0 0 0 1px #f0cf87}
+.deck-layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px}.pack-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.collection-card{min-height:120px;text-align:left;padding:14px;background:linear-gradient(145deg,#172333,#0b1119);border-color:#675a43}.collection-card strong,.collection-card span,.collection-card em{display:block}.collection-card strong{font-size:17px}.collection-card span{font-size:11px;color:#aaa;margin-top:8px}.collection-card em{font-style:normal;color:#d9bd7d;margin-top:20px}.collection-card.chosen{border-color:#e3c06f;box-shadow:inset 0 0 24px #e3c06f18}
+.deck-list{max-height:58vh;overflow:auto}.deck-row{display:flex;justify-content:space-between;text-align:left}.deck-row span{color:#d7b96f}.deck-empty{padding:24px;color:#777;text-align:center}.deploy-button{margin-top:14px;min-height:58px;font-size:20px;border-color:#e1bd6c}
+.settings-panel label{display:grid;grid-template-columns:140px 1fr;align-items:center;gap:15px;margin:16px 0}.settings-panel input[type=checkbox]{width:24px;height:24px}
+.battle-shell-head{display:flex;gap:12px;align-items:center}.battle-shell-head>button{width:120px}
+@media(max-width:700px){
+ .title-screen,.menu-screen{background-position:42% center}.title-shade{background:linear-gradient(0deg,rgba(3,8,16,.8),transparent 58%)}
+ .title-copy{left:5vw;right:5vw;top:auto;bottom:8vh;width:auto}.title-copy h1{font-size:38px}.title-copy .press-start{margin-top:4vh}
+ .menu-screen:before{background:linear-gradient(0deg,rgba(4,8,14,.94),rgba(4,8,14,.05) 65%)}.menu-panel{left:6vw;right:6vw;top:auto;bottom:5vh;width:auto}
+ .game-logo{font-size:32px;margin-bottom:10px}.menu-panel>button{min-height:54px;font-size:20px;padding:8px 18px}
+ .shell-screen{padding:18px 10px}.shell-panel{margin-top:4vh}.deck-layout{grid-template-columns:1fr}.pack-cards{grid-template-columns:1fr 1fr}.deck-list{max-height:220px}
+ .deck-builder header{align-items:flex-start}.battle-shell-head{align-items:flex-start}.battle-shell-head>button{width:95px}
+}
