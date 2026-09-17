@@ -213,28 +213,60 @@ function tileAt(snapshot,x,y){return snapshot.map.tiles.find(t=>t.x===x&&t.y===y
 function elevationAt(snapshot,x,y){
   const t=tileAt(snapshot,x,y);return t?Number(t.elevation||0):0;
 }
-function drawExposedCliffs(scene,snapshot,tile,p,depth){
-  const e=Number(tile.elevation||0);if(e<=0)return;
+function terrainEdges(snapshot,tile,p){
   const hw=CONFIG.tileWidth/2,hh=CONFIG.tileHeight/2;
-  const faces=[
-    {neighbor:{x:tile.x-1,y:tile.y},a:{x:p.x+hw,y:p.y},b:{x:p.x,y:p.y+hh},color:COLORS.cliffB},
-    {neighbor:{x:tile.x,y:tile.y+1},a:{x:p.x-hw,y:p.y},b:{x:p.x,y:p.y+hh},color:COLORS.cliffA}
+  const centerBase=IsoProjection.basePoint(tile.x,tile.y,snapshot.map);
+  const candidates=[
+    {dx:1,dy:0},{dx:-1,dy:0},{dx:0,dy:1},{dx:0,dy:-1}
   ];
-  faces.forEach(face=>{
-    const neighbor=tileAt(snapshot,face.neighbor.x,face.neighbor.y);
-    const neighborElevation=neighbor?Number(neighbor.elevation||0):0;
-    if(neighborElevation>=e)return;
-    const drop=(e-neighborElevation)*CONFIG.elevationHeight;
-    const g=scene.add.graphics().setDepth(depth-1);
-    g.fillStyle(face.color,.98);
-    g.beginPath();
-    g.moveTo(face.a.x,face.a.y);
-    g.lineTo(face.b.x,face.b.y);
-    g.lineTo(face.b.x,face.b.y+drop);
-    g.lineTo(face.a.x,face.a.y+drop);
-    g.closePath();
-    g.fillPath();
+
+  return candidates.map(dir=>{
+    const neighborBase=IsoProjection.basePoint(tile.x+dir.dx,tile.y+dir.dy,snapshot.map);
+    const sx=neighborBase.x-centerBase.x;
+    const sy=neighborBase.y-centerBase.y;
+
+    /* The shared diamond edge is derived from the projected neighbour vector.
+       Nothing here assumes a particular map orientation. */
+    let a,b;
+    if(sx<0&&sy>0){ a={x:p.x-hw,y:p.y}; b={x:p.x,y:p.y+hh}; }
+    else if(sx>0&&sy>0){ a={x:p.x+hw,y:p.y}; b={x:p.x,y:p.y+hh}; }
+    else if(sx>0&&sy<0){ a={x:p.x,y:p.y-hh}; b={x:p.x+hw,y:p.y}; }
+    else { a={x:p.x-hw,y:p.y}; b={x:p.x,y:p.y-hh}; }
+
+    return {
+      neighborX:tile.x+dir.dx,
+      neighborY:tile.y+dir.dy,
+      screenDx:sx,
+      screenDy:sy,
+      a,b
+    };
   });
+}
+function drawExposedCliffs(scene,snapshot,tile,p,depth){
+  const elevation=Number(tile.elevation||0);
+  if(elevation<=0)return;
+
+  terrainEdges(snapshot,tile,p)
+    /* Front-facing is determined by projection itself: its neighbour projects
+       lower on screen. Rotation/displayGrid changes need no cliff rewrite. */
+    .filter(edge=>edge.screenDy>0)
+    .forEach(edge=>{
+      const neighbor=tileAt(snapshot,edge.neighborX,edge.neighborY);
+      const neighborElevation=neighbor?Number(neighbor.elevation||0):0;
+      const levels=elevation-neighborElevation;
+      if(levels<=0)return;
+
+      const drop=levels*CONFIG.elevationHeight;
+      const g=scene.add.graphics().setDepth(depth-1);
+      g.fillStyle(edge.screenDx<0?COLORS.cliffA:COLORS.cliffB,.98);
+      g.beginPath();
+      g.moveTo(edge.a.x,edge.a.y);
+      g.lineTo(edge.b.x,edge.b.y);
+      g.lineTo(edge.b.x,edge.b.y+drop);
+      g.lineTo(edge.a.x,edge.a.y+drop);
+      g.closePath();
+      g.fillPath();
+    });
 }
 function outline(scene,p,color,depth,scale=.88){
   const g=scene.add.graphics().setDepth(depth),hw=CONFIG.tileWidth/2*scale,hh=CONFIG.tileHeight/2*scale;
