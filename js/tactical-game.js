@@ -235,7 +235,8 @@
         .filter(spawn=>spawn.source==="STAGE")
         .map(spawn=>spawn.characterId)
     );
-    const battleDeck=(stage.battleDeck||[]).filter(cardId=>{
+    const requestedDeck=Array.isArray(window.CardTacticsBattleSetup?.deck)&&window.CardTacticsBattleSetup.deck.length?window.CardTacticsBattleSetup.deck:stage.battleDeck||[];
+    const battleDeck=requestedDeck.filter(cardId=>{
       const card=CardDatabase.get(cardId);
       return !(CardDatabase.isCharacter(card)&&card.unitType==="HERO"&&forcedHeroIds.has(card.characterId));
     });
@@ -1532,7 +1533,8 @@
     playCard:selectCardForPlay,
     endCardPhase,
     cancelCard:()=>{pendingCard=null;render();},
-    refresh:render
+    refresh:render,
+    resetBattle
   };
 
   resetBattle();

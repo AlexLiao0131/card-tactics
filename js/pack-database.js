@@ -1,0 +1,13 @@
+window.CARD_PACKS={
+  LIVIA_SUPPLEMENT:{id:"LIVIA_SUPPLEMENT",name:"莉維亞補充包",cards:["livia_card","kahn_card","cassandra_card","bear_trap_card","avalanche_card","cassandra_blessing_card"]},
+  IMPERIAL:{id:"IMPERIAL",name:"帝國卡包",cards:["leon_card","imperial_swordsman_card","imperial_spearman_card","imperial_archer_card","imperial_heavy_guard_card","imperial_hammer_card","imperial_mage_card","imperial_cavalry_card"]},
+  MAGIC:{id:"MAGIC",name:"魔法卡包",cards:["thunderstorm_card","wildfire_card","tornado_card","miracle_card","fog_card","starfall_card"]},
+  ELF_EMPIRE:{id:"ELF_EMPIRE",name:"精靈帝國",cards:["reina_card","elf_shapeshifter_card","elf_ranger_card","elf_guard_card","elf_priest_card"]},
+  OPHI_SUPPLEMENT:{id:"OPHI_SUPPLEMENT",name:"奧菲補充包",cards:["ophi_card","moon_goddess_blessing_card"]},
+  OTHER:{id:"OTHER",name:"其他／測試",cards:["rain_card","resurrection_card"]}
+};
+window.PackDatabase=(()=>({
+  get:id=>CARD_PACKS[id]||null,
+  list:()=>Object.values(CARD_PACKS),
+  cards:id=>(CARD_PACKS[id]?.cards||[]).map(cardId=>CardDatabase.get(cardId)).filter(Boolean)
+}))();
