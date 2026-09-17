@@ -83,10 +83,13 @@ const BattleStateAdapter=(()=>{
     const m=map(),s=stage();
     if(!m||!s)return null;
     const cells=domCells();
+    const terrainNames=Object.keys(window.TERRAINS||{});
     const tiles=m.tiles.map((tile,index)=>{
       const cell=cells[index]||null;
+      const runtimeTerrain=terrainNames.find(name=>cell?.classList.contains(name.toLowerCase()))||tile.terrain;
       return {
         ...tile,
+        terrain:runtimeTerrain,
         reachable:!!cell?.classList.contains("reachable"),
         attackable:!!cell?.classList.contains("attackable"),
         deployable:!!cell?.classList.contains("deployable"),
@@ -101,8 +104,13 @@ const BattleStateAdapter=(()=>{
       };
     });
     const units=cells.map((cell,index)=>parseUnit(cell,index,m.width)).filter(Boolean);
+    const objects=(m.objects||[]).map(object=>{
+      const runtimeTile=tiles.find(tile=>tile.x===object.x&&tile.y===object.y);
+      const destroyed=object.destructible&&object.breaksIntoTerrain&&runtimeTile?.terrain===object.breaksIntoTerrain;
+      return {...object,destroyed:object.destroyed||!!destroyed};
+    });
     return {
-      stage:s,map:{...m,tiles},units,
+      stage:s,map:{...m,tiles,objects},units,
       selectedUnit:units.find(u=>u.selected)||null,
       phase:window.CardTacticsRuntime?.getPhase?.()||null
     };

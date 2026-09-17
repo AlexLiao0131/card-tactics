@@ -2,11 +2,13 @@ window.TacticalEngine=(()=>{
   const K=(x,y)=>x+","+y,D=(a,b)=>Math.abs(a.x-b.x)+Math.abs(a.y-b.y);
   const MAX_NORMAL_CLIMB=1,MAX_NORMAL_DROP=1;
   function tile(m,x,y){return m.tiles.find(t=>t.x===x&&t.y===y)}
+  function objectAt(m,x,y){return (m?.objects||[]).find(o=>!o.destroyed&&o.x===x&&o.y===y)||null}
   function occupied(us,x,y,id){return us.some(u=>u.alive&&u.id!==id&&u.x===x&&u.y===y)}
   function elevation(t){return Number(t?.elevation||0)}
   function elevationDelta(fromTile,toTile){return elevation(toTile)-elevation(fromTile)}
   function terrainTraits(u){return u?.character?.terrainTraits||[]}
   function isMountainTile(t){return t?.terrain==="HIGH_GROUND"||Number(t?.elevation||0)>0}
+  function isBlockedByObject(m,x,y){return objectAt(m,x,y)?.blocksMovement===true}
   function canTraverseElevation(fromTile,toTile,u=null){
     if(!fromTile||!toTile)return false;
     const traits=terrainTraits(u);
@@ -16,7 +18,7 @@ window.TacticalEngine=(()=>{
   }
   function canActiveMove(m,us,u,x,y,{ignoreElevation=false}={}){
     const from=tile(m,u.x,u.y),to=tile(m,x,y);
-    if(!to||!TERRAINS[to.terrain]?.passable||occupied(us,x,y,u.id))return false;
+    if(!to||!TERRAINS[to.terrain]?.passable||isBlockedByObject(m,x,y)||occupied(us,x,y,u.id))return false;
     return ignoreElevation||canTraverseElevation(from,to,u);
   }
   function cost(u,t){
@@ -31,7 +33,7 @@ window.TacticalEngine=(()=>{
       let n=q.shift(),from=tile(m,n.x,n.y);
       for(let [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
         let x=n.x+dx,y=n.y+dy,t=tile(m,x,y);
-        if(!t||!TERRAINS[t.terrain].passable||occupied(us,x,y,u.id)||!canTraverseElevation(from,t,u))continue;
+        if(!t||!TERRAINS[t.terrain].passable||isBlockedByObject(m,x,y)||occupied(us,x,y,u.id)||!canTraverseElevation(from,t,u))continue;
         let c=n.c+cost(u,t),k=K(x,y);
         if(c<=max&&(!b.has(k)||c<b.get(k))){b.set(k,c);q.push({x,y,c})}
       }
@@ -49,7 +51,7 @@ window.TacticalEngine=(()=>{
       const from=tile(m,n.x,n.y);
       for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
         const x=n.x+dx,y=n.y+dy,t=tile(m,x,y),k=K(x,y);
-        if(!t||!TERRAINS[t.terrain]?.passable||occupied(us,x,y,u.id)||!canTraverseElevation(from,t,u))continue;
+        if(!t||!TERRAINS[t.terrain]?.passable||isBlockedByObject(m,x,y)||occupied(us,x,y,u.id)||!canTraverseElevation(from,t,u))continue;
         const c=n.c+cost(u,t);
         if(c<=max&&(!best.has(k)||c<best.get(k))){best.set(k,c);prev.set(k,nk);q.push({x,y,c})}
       }
@@ -74,5 +76,5 @@ window.TacticalEngine=(()=>{
         dc={...d.character,modifiers:{...(d.character.modifiers||{}),evasion:Number(d.character.modifiers?.evasion||0)+eva}};
     return{result:BattleEngine.calculate(ac,dc,s,opt),terrain:{acc,eva,at,dt}}
   }
-  return{tile,elevation,elevationDelta,canTraverseElevation,canActiveMove,reachable,pathTo,range,targets,resolve}
+  return{tile,objectAt,isBlockedByObject,elevation,elevationDelta,canTraverseElevation,canActiveMove,reachable,pathTo,range,targets,resolve}
 })();
