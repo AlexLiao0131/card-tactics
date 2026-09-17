@@ -6,19 +6,23 @@ window.TacticalEngine=(()=>{
   function occupied(us,x,y,id){return us.some(u=>u.alive&&u.id!==id&&u.x===x&&u.y===y)}
   function elevation(t){return Number(t?.elevation||0)}
   function elevationDelta(fromTile,toTile){return elevation(toTile)-elevation(fromTile)}
-  function canTraverseElevation(fromTile,toTile){
+  function terrainTraits(u){return u?.character?.terrainTraits||[]}
+  function isMountainTile(t){return t?.terrain==="HIGH_GROUND"||Number(t?.elevation||0)>0}
+  function canTraverseElevation(fromTile,toTile,u=null){
     if(!fromTile||!toTile)return false;
+    const traits=terrainTraits(u);
+    if(traits.includes("MOUNTAIN_WALK")&&(isMountainTile(fromTile)||isMountainTile(toTile)))return true;
     const delta=elevationDelta(fromTile,toTile);
     return delta<=MAX_NORMAL_CLIMB&&delta>=-MAX_NORMAL_DROP;
   }
   function canActiveMove(m,us,u,x,y,{ignoreElevation=false}={}){
     const from=tile(m,u.x,u.y),to=tile(m,x,y);
     if(!to||!TERRAINS[to.terrain]?.passable||occupied(us,x,y,u.id))return false;
-    return ignoreElevation||canTraverseElevation(from,to);
+    return ignoreElevation||canTraverseElevation(from,to,u);
   }
   function cost(u,t){
-    let tr=u.character.terrainTraits||[];
-    if(tr.includes("IGNORE_GROUND_TERRAIN")||t.terrain==="FOREST"&&tr.includes("FOREST_WALK")||t.terrain==="WATER"&&tr.includes("WATER_WALK"))return 1;
+    let tr=terrainTraits(u);
+    if(tr.includes("IGNORE_GROUND_TERRAIN")||t.terrain==="FOREST"&&tr.includes("FOREST_WALK")||t.terrain==="WATER"&&tr.includes("WATER_WALK")||isMountainTile(t)&&tr.includes("MOUNTAIN_WALK"))return 1;
     return TERRAINS[t.terrain].moveCost
   }
   function reachable(m,us,u){
@@ -28,7 +32,7 @@ window.TacticalEngine=(()=>{
       let n=q.shift(),from=tile(m,n.x,n.y);
       for(let [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
         let x=n.x+dx,y=n.y+dy,t=tile(m,x,y);
-        if(!t||!TERRAINS[t.terrain].passable||occupied(us,x,y,u.id)||!canTraverseElevation(from,t))continue;
+        if(!t||!TERRAINS[t.terrain].passable||occupied(us,x,y,u.id)||!canTraverseElevation(from,t,u))continue;
         let c=n.c+cost(u,t),k=K(x,y);
         if(c<=max&&(!b.has(k)||c<b.get(k))){b.set(k,c);q.push({x,y,c})}
       }
