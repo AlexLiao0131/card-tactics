@@ -265,7 +265,7 @@ function drawExposedCliffs(scene,snapshot,tile,p,depth){
       if(levels<=0)return;
 
       const drop=levels*CONFIG.elevationHeight;
-      const g=scene.add.graphics().setDepth(depth-1);
+      const g=scene.add.graphics().setDepth(depth-.1);
       g.fillStyle(edge.screenDx<0?COLORS.cliffA:COLORS.cliffB,.98);
       g.beginPath();
       g.moveTo(edge.a.x,edge.a.y);
@@ -284,43 +284,43 @@ function drawDeployment(scene,tile,p,depth){
   if(!tile.deployment&&!tile.capturePoint)return;
   const colors={PLAYER:0x397bd1,ENEMY:0xcf4c4c,NEUTRAL:0xd0ae54};
   if(tile.deployment){
-    const g=scene.add.graphics().setDepth(depth+2);
+    const g=scene.add.graphics().setDepth(depth+.2);
     const hw=CONFIG.tileWidth/2,hh=CONFIG.tileHeight/2;
     g.fillStyle(colors[tile.deployment]||colors.NEUTRAL,.24);
     g.beginPath();g.moveTo(p.x,p.y-hh);g.lineTo(p.x+hw,p.y);g.lineTo(p.x,p.y+hh);g.lineTo(p.x-hw,p.y);g.closePath();g.fillPath();
   }
-  if(tile.capturePoint)outline(scene,p,colors[tile.capturePoint.owner]||colors.NEUTRAL,depth+13,.58);
+  if(tile.capturePoint)outline(scene,p,colors[tile.capturePoint.owner]||colors.NEUTRAL,depth+1.3,.58);
 }
 function drawRock(scene,p,depth,object){
   const objectHeight=Math.max(28,Number(object.visualHeight||46));
   const topY=p.y-objectHeight;
-  const g=scene.add.graphics().setDepth(depth+9);
+  const g=scene.add.graphics().setDepth(depth+.9);
   g.fillStyle(0x727a84,1);
   g.beginPath();
   g.moveTo(p.x-23,p.y-15);g.lineTo(p.x,p.y-7);g.lineTo(p.x+22,p.y-17);
   g.lineTo(p.x+18,topY+11);g.lineTo(p.x,topY);g.lineTo(p.x-19,topY+12);
   g.closePath();g.fillPath();
   g.lineStyle(2,0xaab1b8,.9);g.strokePath();
-  const top=scene.add.graphics().setDepth(depth+10);
+  const top=scene.add.graphics().setDepth(depth+1);
   top.fillStyle(0x9299a1,1);
   top.beginPath();top.moveTo(p.x,topY);top.lineTo(p.x+18,topY+11);
   top.lineTo(p.x,topY+20);top.lineTo(p.x-19,topY+12);top.closePath();top.fillPath();
 }
 function drawEnvironment(scene,snapshot,tile,p,depth){
   drawDeployment(scene,tile,p,depth);
-  if(tile.terrain==="FOREST")scene.add.text(p.x,p.y-18,"🌲",{fontSize:"25px"}).setOrigin(.5,1).setDepth(depth+6);
-  if(tile.terrain==="WATER")scene.add.text(p.x,p.y,"≈",{fontSize:"23px",color:"#b9ecff"}).setOrigin(.5).setDepth(depth+3);
+  if(tile.terrain==="FOREST")scene.add.text(p.x,p.y-18,"🌲",{fontSize:"25px"}).setOrigin(.5,1).setDepth(depth+.6);
+  if(tile.terrain==="WATER")scene.add.text(p.x,p.y,"≈",{fontSize:"23px",color:"#b9ecff"}).setOrigin(.5).setDepth(depth+.3);
   const object=(snapshot.map.objects||[]).find(o=>!o.destroyed&&o.x===tile.x&&o.y===tile.y);
   if(object?.type==="ROCK")drawRock(scene,p,depth,object);
-  else if(object)scene.add.rectangle(p.x,p.y-24,40,48,0x747b85).setStrokeStyle(2,0xaab0b8).setDepth(depth+9);
-  else if(tile.terrain==="WALL")scene.add.rectangle(p.x,p.y-22,42,44,0x747b85).setStrokeStyle(2,0xaab0b8).setDepth(depth+8);
-  if(tile.effects.includes("BURNING"))scene.add.text(p.x-14,p.y-10,"🔥",{fontSize:"18px"}).setOrigin(.5).setDepth(depth+12);
-  if(tile.effects.includes("STEAM"))scene.add.text(p.x+13,p.y-9,"♨",{fontSize:"17px"}).setOrigin(.5).setDepth(depth+12);
-  if(tile.effects.includes("TRAP"))scene.add.text(p.x,p.y-5,"🪤",{fontSize:"20px"}).setOrigin(.5).setDepth(depth+12);
+  else if(object)scene.add.rectangle(p.x,p.y-24,40,48,0x747b85).setStrokeStyle(2,0xaab0b8).setDepth(depth+.9);
+  else if(tile.terrain==="WALL")scene.add.rectangle(p.x,p.y-22,42,44,0x747b85).setStrokeStyle(2,0xaab0b8).setDepth(depth+.8);
+  if(tile.effects.includes("BURNING"))scene.add.text(p.x-14,p.y-10,"🔥",{fontSize:"18px"}).setOrigin(.5).setDepth(depth+1.2);
+  if(tile.effects.includes("STEAM"))scene.add.text(p.x+13,p.y-9,"♨",{fontSize:"17px"}).setOrigin(.5).setDepth(depth+1.2);
+  if(tile.effects.includes("TRAP"))scene.add.text(p.x,p.y-5,"🪤",{fontSize:"20px"}).setOrigin(.5).setDepth(depth+1.2);
 }
 function drawUnit(scene,unit,p,depth){
   const player=unit.team==="PLAYER",alpha=unit.finished?.5:1;
-  const c=scene.add.container(p.x,p.y-CONFIG.unitLift).setDepth(depth+20);
+  const c=scene.add.container(p.x,p.y-CONFIG.unitLift).setDepth(depth);
   c.add(scene.add.ellipse(0,38,55,16,0x000000,.38));
   c.add(scene.add.rectangle(0,0,58,72,player?0x2d67a7:0xa74444,.98).setStrokeStyle(3,unit.selected?0xffffff:0xd8e0e8).setAlpha(alpha));
   c.add(scene.add.text(0,-9,unit.name,{fontFamily:"system-ui,sans-serif",fontSize:"11px",fontStyle:"bold",color:"#fff",stroke:"#071018",strokeThickness:3,align:"center",wordWrap:{width:52}}).setOrigin(.5));
@@ -334,6 +334,13 @@ function worldPoint(snapshot,tile,N){
   const p=IsoProjection.point(tile.x,tile.y,tile.elevation,snapshot.map);
   return {x:p.x+N.offsetX,y:p.y+N.offsetY};
 }
+function worldDepth(snapshot,x,y,layer=0){
+  // 2.5D sorting is anchored to projected ground contact.
+  // Elevation changes visual Y only; it must not move a raised tile in front of
+  // an object whose ground contact is actually closer to the camera.
+  const base=IsoProjection.basePoint(x,y,snapshot.map);
+  return 1000+base.y*10+layer;
+}
 function renderScene(scene,{resetCamera=false}={}){
   const snapshot=BattleStateAdapter.snapshot();if(!snapshot)return;
   BattleHUD.render(snapshot);
@@ -343,23 +350,21 @@ function renderScene(scene,{resetCamera=false}={}){
 
   snapshot.map.tiles.forEach(tile=>{
     const p=worldPoint(snapshot,tile,N);
-    const display=IsoProjection.point(tile.x,tile.y,0,snapshot.map);
-    const depth=100+display.y+Number(tile.elevation||0)*CONFIG.elevationHeight;
+    const depth=worldDepth(snapshot,tile.x,tile.y,0);
     drawExposedCliffs(scene,snapshot,tile,p,depth);
     const g=scene.add.graphics().setDepth(depth);
     diamond(g,p,terrainColor(tile.terrain));
-    if(tile.elevation>0)scene.add.text(p.x+31,p.y-13,`H${tile.elevation}`,{fontSize:"10px",fontStyle:"bold",color:"#fff0ad",stroke:"#17140d",strokeThickness:3}).setOrigin(.5).setDepth(depth+4);
-    if(tile.reachable)outline(scene,p,0x4da6ff,depth+10);
-    if(tile.attackable)outline(scene,p,0xff5e5e,depth+10);
-    if(tile.deployable)outline(scene,p,0x70e38b,depth+10);
-    if(tile.inspected)outline(scene,p,0xffd166,depth+11,.74);
+    if(tile.elevation>0)scene.add.text(p.x+31,p.y-13,`H${tile.elevation}`,{fontSize:"10px",fontStyle:"bold",color:"#fff0ad",stroke:"#17140d",strokeThickness:3}).setOrigin(.5).setDepth(depth+.4);
+    if(tile.reachable)outline(scene,p,0x4da6ff,depth+1);
+    if(tile.attackable)outline(scene,p,0xff5e5e,depth+1);
+    if(tile.deployable)outline(scene,p,0x70e38b,depth+1);
+    if(tile.inspected)outline(scene,p,0xffd166,depth+1.1,.74);
     drawEnvironment(scene,snapshot,tile,p,depth);
   });
   snapshot.units.forEach(unit=>{
     const tile=tileAt(snapshot,unit.x,unit.y);if(!tile)return;
     const p=worldPoint(snapshot,tile,N);
-    const d=IsoProjection.point(unit.x,unit.y,0,snapshot.map);
-    drawUnit(scene,unit,p,200+d.y+Number(tile.elevation||0)*CONFIG.elevationHeight);
+    drawUnit(scene,unit,p,worldDepth(snapshot,unit.x,unit.y,3));
   });
 
   if(resetCamera||!cam.__ctReady){
