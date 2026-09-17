@@ -3,7 +3,7 @@
   const TEAM={PLAYER:"P",ENEMY:"E"};
   const PHASE={CARD:"CARD_PHASE",PLAYER:"PLAYER_TURN",ENEMY:"ENEMY_TURN",ENDED:"MATCH_ENDED"};
 
-  let map,units,selected,mode,selectedSkill,selectedSkillVariant,logs,round,phase,matchResult,stage,stageState,environmentState;
+  let map,units,selected,mode,selectedSkill,selectedSkillVariant,logs,round,phase,matchResult,stage,stageState,environmentState,inspectedTile;
   let logState=BattleLog.create(),cardState=null,pendingCard=null,unitSerial=0;
   let pendingEngagement=null;
   let supportSelection=new Map();
@@ -237,6 +237,7 @@
     stage.enemySpawns.forEach((u,i)=>units.push(createUnit("e"+i,TEAM.ENEMY,u.characterId,u.x,u.y)));
 
     selected=null;
+    inspectedTile=null;
     selectedSkill=null;
     selectedSkillVariant=null;
     pendingEngagement=null;
@@ -822,6 +823,64 @@
     return true;
   }
 
+  const TILE_EFFECT_INFO={
+    BURNING:{name:"燃燒",interaction:"小火可被水／豪雨熄滅；風可使燃燒區形成火龍捲。"},
+    STEAM:{name:"蒸氣",interaction:"遮蔽視線；持續時間結束後消散。"},
+    FRAGMENTS:{name:"岩石破片",interaction:"爆炸擊中石質環境時產生的物理破片效果。"},
+    FIRE_TORNADO:{name:"火龍捲",interaction:"燃燒區受到風力作用形成；造成高額火焰環境傷害。"},
+    ELECTRIFIED:{name:"帶電",interaction:"雷元素在水域或雨天可發生傳導。"}
+  };
+  const TILE_ENVIRONMENT_NAME={NONE:"一般",GRASS:"草木",WATER:"水",STONE:"石質"};
+  const WEATHER_NAME={CLEAR:"晴朗",FOG:"迷霧",RAIN:"雨",HEAVY_RAIN:"豪雨／雷雨"};
+
+  function tileInteractions(tile,effects){
+    const environment=EnvironmentEngine.environmentAt(map,tile.x,tile.y);
+    const notes=[];
+    if(environment==="GRASS"){
+      if(EnvironmentEngine.isRain(environmentState))notes.push("草木受雨勢影響，小火無法形成持續燃燒。");
+      else notes.push("草木可被 FIRE／HEAVY_FIRE 點燃。");
+    }
+    if(environment==="WATER"){
+      notes.push("小火會被熄滅；HEAVY_FIRE 會產生蒸氣並蒸乾水域，地形轉為陸地。");
+      notes.push("水域可傳導雷元素。");
+    }
+    if(environment==="STONE")notes.push("EXPLOSION 可產生岩石破片；可破壞的石質物件可能被炸開。");
+    if(tile.terrain==="MUD")notes.push("泥濘提高一般移動成本；雨勢結束後恢復為平地。");
+    if(EnvironmentEngine.isRain(environmentState))notes.push("雨天環境具導電性。");
+    for(const effect of effects){
+      const note=TILE_EFFECT_INFO[effect.type]?.interaction;
+      if(note&&!notes.includes(note))notes.push(note);
+    }
+    return notes;
+  }
+
+  function tileAnnotation(tile){
+    if(!tile)return "";
+    const terrain=TERRAINS[tile.terrain]||{};
+    const environment=EnvironmentEngine.environmentAt(map,tile.x,tile.y);
+    const effects=environmentState?EnvironmentEngine.effectAt(environmentState,tile.x,tile.y):[];
+    const object=(map.objects||[]).find(o=>!o.destroyed&&o.x===tile.x&&o.y===tile.y);
+    const lines=[
+      `地圖格 (${tile.x},${tile.y})｜${terrain.name||tile.terrain}｜H${Number(tile.elevation||0)}`,
+      `移動成本：${terrain.passable===false?"不可通行":terrain.moveCost??"-"}｜迴避修正：${Number(terrain.evasion||0)>=0?"+":""}${Number(terrain.evasion||0)}${terrain.rangedAccuracy?`｜遠程命中 +${terrain.rangedAccuracy}`:""}`,
+      `環境材質：${TILE_ENVIRONMENT_NAME[environment]||environment}｜天候：${WEATHER_NAME[environmentState?.weather]||environmentState?.weather||"晴朗"}`
+    ];
+    if(object)lines.push(`地圖物件：${object.name||object.id}${object.destructible?"｜可破壞":""}`);
+    if(effects.length){
+      lines.push("目前效果："+effects.map(effect=>{
+        const info=TILE_EFFECT_INFO[effect.type];
+        const duration=effect.duration==null?"":`（剩 ${effect.duration} 回合）`;
+        const damage=effect.damage?`／傷害 ${effect.damage}`:"";
+        return `${info?.name||effect.type}${duration}${damage}`;
+      }).join("、"));
+    }else{
+      lines.push("目前效果：無");
+    }
+    const interactions=tileInteractions(tile,effects);
+    lines.push(`環境互動：${interactions.length?interactions.join(" "):"目前沒有特殊互動。"}`);
+    return lines.join("\n");
+  }
+
   function render(){
     battlefield.innerHTML="";
 
@@ -858,6 +917,8 @@
       if(unit&&targets.includes(unit)) cell.classList.add("attackable");
       if(mapTargets.includes(tile)) cell.classList.add("attackable");
       if(unit===selected) cell.classList.add("selected");
+      if(inspectedTile===tile) cell.classList.add("tile-inspected");
+      cell.title=tileAnnotation(tile);
 
       const finishedClass=unit&&unit.team===TEAM.PLAYER&&unit.acted?" finished":"";
       cell.innerHTML=
@@ -876,6 +937,9 @@
 
     renderTurnStatus();
     renderPanel();
+    if(inspectedTile){
+      tacticalInfo.textContent+=(tacticalInfo.textContent?"\n\n":"")+`【格子資訊】\n${tileAnnotation(inspectedTile)}`;
+    }
     renderLog();
 
     endTurn.disabled=phase!==PHASE.PLAYER||!!matchResult;
@@ -883,7 +947,8 @@
   }
 
   function handleTileClick(tile,unit,reachable,targets){
-    if(matchResult)return;
+    inspectedTile=tile;
+    if(matchResult){render();return;}
     if(phase===PHASE.CARD){
       if(pendingCard&&CardDatabase.isSpell(pendingCard)){resolveSpellAt(pendingCard,tile);return;}
       if(pendingCard&&CardDatabase.isCharacter(pendingCard)&&!unit)deployPendingCard(tile);
@@ -917,7 +982,9 @@
 
     if(selected&&!selected.acted&&mode==="attack"&&unit&&targets.includes(unit)){
       prepareAttack(selected,unit,selectedSkill);
+      return;
     }
+    render();
   }
 
   function prepareAttack(attacker,defender,skill){
