@@ -15,6 +15,8 @@
     const cards=CardDatabase.list(state.zones.hand);
     if(previewId&&!cards.some(c=>c.id===previewId))previewId=null;
     const preview=previewId?CardDatabase.get(previewId):null;
+    const targeting=!!pending;
+    host.classList.toggle("targeting-mode",targeting);
 
     host.innerHTML=
       `<div class="battle-resource">💎 ${state.crystals}/${state.crystalsPerTurn}</div>`+
@@ -31,7 +33,8 @@
         <div class="preview-question">要使用這張卡嗎？</div>
         <div class="preview-actions"><button id="confirmCardUse">使用</button><button id="cancelCardPreview">取消</button></div>
       </div>`:"")+
-      `<div class="card-phase-compact-actions"><button id="endCardPhase" ${phase==="CARD_PHASE"?"":"disabled"}>結束卡牌階段</button>${pending?`<button id="cancelCardDeploy">取消部署</button>`:""}</div>`;
+      (targeting?`<div class="card-targeting-bar"><button id="cancelCardDeploy">← 取消</button><strong>${pending.name}</strong><span>${pending.type==="CHARACTER"?"請選擇部署位置":"請在戰場選擇目標"}</span></div>`:"")+
+      `<div class="card-phase-compact-actions"><button id="endCardPhase" ${phase==="CARD_PHASE"&&!targeting?"":"disabled"}>結束卡牌階段</button></div>`;
 
     host.querySelectorAll("[data-card]").forEach(btn=>{
       btn.addEventListener("click",()=>{
