@@ -12,6 +12,8 @@
     if(!state)return;
     const phase=CardTacticsRuntime.getPhase();
     const pending=CardTacticsRuntime.getPendingCard();
+    const enemyState=CardTacticsRuntime.getEnemyCardState?.();
+    const enemyView=CardTacticsRuntime.getEnemyPresentation?.();
     const cards=CardDatabase.list(state.zones.hand);
     if(previewId&&!cards.some(c=>c.id===previewId))previewId=null;
     const preview=previewId?CardDatabase.get(previewId):null;
@@ -19,7 +21,8 @@
     host.classList.toggle("targeting-mode",targeting);
 
     host.innerHTML=
-      `<div class="battle-resource">💎 ${state.crystals}/${state.crystalsPerTurn}</div>`+
+      (phase==="ENEMY_TURN"?`<div class="enemy-turn-panel"><div class="enemy-turn-title">敵方回合　💎 ${enemyState?.crystals||0}/${enemyState?.crystalCapacity||0}</div><div class="enemy-card-backs">${Array.from({length:enemyState?.zones?.hand?.length||0},()=>"<i></i>").join("")}</div><div class="enemy-turn-message">${enemyView?.message||"敵方思考中…"}</div>${enemyView?.cardId?`<div class="enemy-played-card">${CardDatabase.get(enemyView.cardId)?.name||""}</div>`:""}</div>`:"")+
+      `<div class="battle-resource">💎 ${state.crystals}/${state.crystalCapacity||state.startingCrystals||4}</div>`+
       `<div class="battle-deck-count">牌庫 ${state.zones.deck.length}</div>`+
       `<div class="fan-hand">${cards.map((c,i)=>{
         const mid=(cards.length-1)/2;
@@ -46,17 +49,10 @@
       const id=previewId;
       previewId=null;
       if(id)CardTacticsRuntime.playCard(id);
-      // playCard() changes pendingCard synchronously. Re-render immediately so
-      // targeting-mode is applied even when the runtime branch does not emit
-      // cardtactics:state until deployment/target resolution completes.
-      render();
     });
     host.querySelector("#cancelCardPreview")?.addEventListener("click",()=>{previewId=null;render();});
     host.querySelector("#endCardPhase")?.addEventListener("click",()=>CardTacticsRuntime.endCardPhase());
-    host.querySelector("#cancelCardDeploy")?.addEventListener("click",()=>{
-      CardTacticsRuntime.cancelCard();
-      render();
-    });
+    host.querySelector("#cancelCardDeploy")?.addEventListener("click",()=>CardTacticsRuntime.cancelCard());
   }
 
   window.addEventListener("cardtactics:state",render);
