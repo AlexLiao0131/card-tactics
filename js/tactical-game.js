@@ -1,5 +1,5 @@
 (()=>{
-  const ICON={PLAIN:"",FOREST:"🌲",HIGH_GROUND:"▲",WATER:"≈",WALL:"■"};
+  const ICON={PLAIN:"",MUD:"≋",FOREST:"🌲",HIGH_GROUND:"▲",WATER:"≈",WALL:"■"};
   const TEAM={PLAYER:"P",ENEMY:"E"};
   const PHASE={CARD:"CARD_PHASE",PLAYER:"PLAYER_TURN",ENEMY:"ENEMY_TURN",ENDED:"MATCH_ENDED"};
 
@@ -101,8 +101,9 @@
       if(card.effect?.type==="WEATHER"){
         if(!CardPhaseEngine.commit(cardState,card))return false;
         const weather=card.effect.weather==="RAIN"?"HEAVY_RAIN":card.effect.weather;
-        if(environmentState)EnvironmentEngine.setWeather(environmentState,weather);
+        const weatherEvents=environmentState?EnvironmentEngine.setWeather(environmentState,weather,map):[];
         pushLog(`施放卡牌魔法「${card.name}」｜消耗 ${card.cost} 水晶。`,"SYSTEM");
+        weatherEvents.forEach(logEnvironmentEvent);
         pushLog(`天候變更：${weather==="HEAVY_RAIN"?"雷雨／豪大雨":weather==="FOG"?"迷霧":weather}。`,"SYSTEM");
         pendingCard=null;render();window.dispatchEvent(new CustomEvent("cardtactics:state"));return true;
       }
@@ -768,7 +769,12 @@
   function logEnvironmentEvent(event){
     if(event.type==="IGNITE")pushLog(`(${event.x},${event.y}) 燃燒起來，成為火光來源。`,"SYSTEM");
     else if(event.type==="FIRE_EXTINGUISHED")pushLog(`(${event.x},${event.y}) 的火焰被水熄滅。`,"SYSTEM");
-    else if(event.type==="STEAM_CREATED")pushLog(`大量火焰接觸水域，(${event.x},${event.y}) 產生蒸氣迷霧。`,"SYSTEM");
+    else if(event.type==="RAIN_EXTINGUISHED_FIRE")pushLog(`豪雨熄滅 (${event.x},${event.y}) 的普通火焰。`,"SYSTEM");
+    else if(event.type==="RAIN_SUPPRESSED_FIRE")pushLog(`豪雨壓制 (${event.x},${event.y}) 的小火，無法形成燃燒地形。`,"SYSTEM");
+    else if(event.type==="MUD_CREATED")pushLog(`豪雨使 (${event.x},${event.y}) 的平地化為泥濘。`,"DETAIL");
+    else if(event.type==="MUD_DRY")pushLog(`(${event.x},${event.y}) 的泥濘乾燥，恢復為平地。`,"DETAIL");
+    else if(event.type==="WATER_EVAPORATED")pushLog(`高熱蒸乾 (${event.x},${event.y}) 的水域，地形轉為陸地。`,"SYSTEM");
+    else if(event.type==="STEAM_CREATED")pushLog(`高熱與水分作用，(${event.x},${event.y}) 產生蒸氣迷霧。`,"SYSTEM");
     else if(event.type==="STONE_FRAGMENT")pushLog(`爆炸擊中石質物件，(${event.x},${event.y}) 產生破片${event.destroyed?"並炸開道路":""}。`,"SYSTEM");
     else if(event.type==="FIRE_TORNADO_CREATED")pushLog(`(${event.x},${event.y}) 的燃燒區被風捲起，形成火龍捲。`,"SYSTEM");
     else if(event.type==="ELECTRIC_CONDUCTION")pushLog(`⚡ (${event.x},${event.y}) 發生雷元素傳導。`,"SYSTEM");

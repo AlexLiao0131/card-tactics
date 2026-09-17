@@ -12,7 +12,7 @@ window.EnvironmentEngine=(()=>{
   function environmentAt(map,x,y){const object=objectAt(map,x,y);if(object?.environment)return object.environment;const tile=tileAt(map,x,y);return TERRAINS[tile?.terrain]?.environment||ELEMENT.NONE;}
   function create({timeOfDay="DAY",weather="CLEAR"}={}){return{timeOfDay,weather:weather||WEATHER.CLEAR,effects:new Map(),destroyedObjects:new Set()};}
   function setTimeOfDay(state,timeOfDay){state.timeOfDay=timeOfDay==="NIGHT"?"NIGHT":"DAY";}
-  function setWeather(state,weather){
+  function setWeather(state,weather,map=null){
     if(!state)return[];
     state.weather=WEATHER[weather]?weather:WEATHER.CLEAR;
     const events=[];
@@ -23,6 +23,17 @@ window.EnvironmentEngine=(()=>{
         const [x,y]=k.split(",").map(Number);
         removeEffect(state,x,y,EFFECT.BURNING);
         events.push({type:"RAIN_EXTINGUISHED_FIRE",x,y});
+      }
+      for(const tile of map?.tiles||[]){
+        if(tile.terrain!=="PLAIN")continue;
+        tile.terrain="MUD";
+        events.push({type:"MUD_CREATED",x:tile.x,y:tile.y});
+      }
+    }else{
+      for(const tile of map?.tiles||[]){
+        if(tile.terrain!=="MUD")continue;
+        tile.terrain="PLAIN";
+        events.push({type:"MUD_DRY",x:tile.x,y:tile.y});
       }
     }
     return events;
@@ -58,8 +69,19 @@ window.EnvironmentEngine=(()=>{
     }
 
     if(environment===ELEMENT.WATER){
-      if(forceSet.has(FORCE.HEAVY_FIRE)){removeEffect(state,x,y,EFFECT.BURNING);addEffect(state,x,y,{type:EFFECT.STEAM,duration:2,visionBlock:true});events.push({type:"STEAM_CREATED",x,y,effect:EFFECT.STEAM});}
-      else if(forceSet.has(FORCE.FIRE)){removeEffect(state,x,y,EFFECT.BURNING);events.push({type:"FIRE_EXTINGUISHED",x,y});}
+      if(forceSet.has(FORCE.HEAVY_FIRE)){
+        removeEffect(state,x,y,EFFECT.BURNING);
+        addEffect(state,x,y,{type:EFFECT.STEAM,duration:2,visionBlock:true});
+        events.push({type:"STEAM_CREATED",x,y,effect:EFFECT.STEAM});
+        const tile=tileAt(map,x,y);
+        if(tile?.terrain==="WATER"){
+          tile.terrain="PLAIN";
+          events.push({type:"WATER_EVAPORATED",x,y,terrain:"PLAIN"});
+        }
+      }else if(forceSet.has(FORCE.FIRE)){
+        removeEffect(state,x,y,EFFECT.BURNING);
+        events.push({type:"FIRE_EXTINGUISHED",x,y});
+      }
     }
     if(forceSet.has(FORCE.THUNDER)&&isConductive(map,state,x,y)){addEffect(state,x,y,{type:EFFECT.ELECTRIFIED,duration:1,damage:HAZARD.ELECTRIC_DAMAGE,damageType:"THUNDER"});events.push({type:"ELECTRIC_CONDUCTION",x,y,effect:EFFECT.ELECTRIFIED});}
     if(environment===ELEMENT.STONE&&forceSet.has(FORCE.EXPLOSION)){addEffect(state,x,y,{type:EFFECT.FRAGMENTS,duration:1,damageType:"PHYSICAL",radius:1});const object=objectAt(map,x,y),destroyed=destroyStoneObject(map,state,object);events.push({type:"STONE_FRAGMENT",x,y,effect:EFFECT.FRAGMENTS,destroyed,objectId:object?.id||null});}
