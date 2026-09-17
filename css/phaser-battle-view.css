@@ -61,3 +61,6 @@
   .card-phase-compact-actions{right:5px;bottom:35px}.card-phase-compact-actions button{font-size:10px;padding:6px}
   .card-preview{bottom:112px;width:min(270px,86vw)}.preview-card-face{height:205px}
 }
+.battle-unit-hud-close{position:absolute;right:7px;top:7px;width:25px;height:25px;padding:0;border:1px solid #647487;border-radius:50%;display:grid;place-items:center;background:#15202c;color:#dce5ef;font-size:18px;line-height:1;pointer-events:auto}
+.battle-unit-hud-close:active{transform:scale(.94)}
+.battle-unit-summary{padding-right:27px}
