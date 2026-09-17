@@ -1,36 +1,52 @@
-/* Card Tactics Phaser Battle View
-   Visual-only layer. Existing TacticalEngine / battle rules remain authoritative. */
-.battle-screen main{max-width:1600px}
-.phaser-battlefield{
-  width:100%;
-  height:clamp(520px,68vh,900px);
-  min-height:520px;
-  overflow:hidden;
-  border:1px solid #4a5666;
-  border-radius:12px;
-  background:#111820;
-  touch-action:none;
-  position:relative;
-}
+/* Full-screen Phaser battle surface */
+.battle-screen.active{height:100vh;min-height:0;overflow:hidden;background:#0b1118}
+.battle-screen main{position:relative;width:100%;max-width:none;height:100vh;margin:0;padding:0;overflow:hidden}
+.battle-shell-head{position:absolute;left:10px;top:8px;z-index:40;pointer-events:none}
+.battle-shell-head>button{pointer-events:auto;width:auto;min-width:92px;background:#081018cc}
+.battle-shell-head h1,.battle-shell-head .sub{display:none}
+.battle-screen main>section.card:nth-of-type(2){position:static;margin:0;padding:0;border:0;background:none}
+.battle-screen .legend{display:none}
+.phaser-battlefield{position:absolute;inset:0;width:100%;height:100%;min-height:0;overflow:hidden;border:0;border-radius:0;background:#111820;touch-action:none}
 .phaser-battlefield canvas{display:block;width:100%!important;height:100%!important;touch-action:none}
-.battlefield.phaser-source{
-  position:absolute!important;
-  width:1px!important;height:1px!important;
-  overflow:hidden!important;
-  opacity:0!important;
-  pointer-events:none!important;
-  clip-path:inset(50%)!important;
-}
-.phaser-battlefield::after{
-  content:"拖曳移動視野 · 滾輪 / 雙指縮放";
-  position:absolute;right:10px;bottom:8px;
-  z-index:2;pointer-events:none;
-  font-size:11px;color:#d8e1ecaa;
-  background:#081018aa;border:1px solid #53606d88;
-  border-radius:6px;padding:5px 8px;
-}
+.phaser-error{position:absolute;inset:0;display:grid;place-items:center;padding:24px;text-align:center;color:#ffd0d0;background:#251313}
+.battlefield.phaser-source{position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;opacity:0!important;pointer-events:none!important;clip-path:inset(50%)!important}
+.phaser-battlefield::after{content:"拖曳移動 · 雙指縮放";position:absolute;right:10px;top:10px;z-index:2;pointer-events:none;font-size:11px;color:#d8e1ecaa;background:#081018aa;border:1px solid #53606d88;border-radius:6px;padding:5px 8px}
+.turn-status{position:absolute;z-index:35;top:8px;left:50%;transform:translateX(-50%);width:auto;min-width:260px;margin:0;padding:8px 14px;background:#081018cc}
+.toolbar{position:absolute;z-index:35;right:10px;top:42px;display:flex;gap:5px}
+.toolbar button{width:auto;padding:7px 10px;background:#081018cc}
+#tacticalInfo{position:absolute;z-index:34;left:10px;bottom:148px;width:min(390px,42vw);max-height:25vh;overflow:auto;margin:0;background:#081018dd;font-size:12px}
+#skillBar{position:absolute;z-index:36;right:10px;bottom:145px;width:min(390px,42vw);margin:0}
+#battleLog,.log-tabs,.battle-screen details{display:none}
+
+/* Hand becomes an overlay over the battlefield, not a separate page block. */
+.battle-hand-shell{position:absolute!important;z-index:50;left:0;right:0;bottom:0;margin:0!important;padding:0!important;border:0!important;background:transparent!important;pointer-events:none}
+#cardPhasePanel{position:relative;height:142px;pointer-events:none}
+.battle-resource,.battle-deck-count{position:absolute;bottom:12px;z-index:56;padding:7px 10px;border:1px solid #5b6572;border-radius:8px;background:#081018dd;font-weight:800;pointer-events:auto}
+.battle-resource{left:10px}.battle-deck-count{right:10px}
+.fan-hand{position:absolute;left:50%;bottom:-38px;transform:translateX(-50%);height:170px;width:min(760px,82vw);display:flex;justify-content:center;align-items:flex-end;pointer-events:none}
+.fan-card{--rot:calc(var(--fan)*4deg);width:112px;min-width:112px;height:154px;margin-left:-24px;padding:10px 8px 8px;border-radius:10px;border:2px solid #a98c58;background:linear-gradient(160deg,#26354a,#0c121b 70%);box-shadow:0 5px 18px #0009;transform:translateY(calc(abs(var(--fan))*5px)) rotate(var(--rot));transform-origin:50% 120%;pointer-events:auto;position:relative;transition:transform .16s ease,filter .16s ease;overflow:hidden}
+.fan-card:first-child{margin-left:0}.fan-card:not(:disabled):active,.fan-card.previewing{transform:translateY(-34px) rotate(0deg);z-index:10}
+.fan-card:disabled{filter:grayscale(.75);opacity:.58}.fan-card.pending{outline:3px solid #70e38b}
+.fan-cost{position:absolute;left:7px;top:7px;width:27px;height:27px;border-radius:50%;display:grid;place-items:center;background:#3566a8;border:1px solid #bcd6ff;font-weight:900}
+.fan-name{display:block;margin-top:35px;font-weight:900;font-size:14px;line-height:1.15}.fan-card small{display:block;margin-top:8px;color:#b9c1cb;font-size:10px}
+.card-preview{position:absolute;left:50%;bottom:126px;transform:translateX(-50%);z-index:80;width:min(300px,84vw);padding:12px;border:1px solid #c6aa73;border-radius:14px;background:#081018f2;box-shadow:0 18px 60px #000c;pointer-events:auto;text-align:center}
+.preview-card-face{height:230px;border:2px solid #b89b66;border-radius:11px;background:linear-gradient(155deg,#344964,#111a26 70%);display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;padding:18px}
+.preview-card-face strong{font-size:24px}.preview-card-face small{margin-top:12px;color:#c6cbd2}.preview-cost{position:absolute;left:10px;top:10px;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:#3566a8;font-size:20px;font-weight:900}
+.preview-question{font-weight:900;margin:10px 0 5px}.preview-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.card-phase-compact-actions{position:absolute;right:10px;bottom:52px;z-index:57;display:flex;gap:5px;pointer-events:auto}.card-phase-compact-actions button{width:auto;padding:7px 10px;background:#081018dd}
+
 @media(max-width:700px){
-  .battle-screen main{padding:8px}
-  .phaser-battlefield{height:58vh;min-height:420px;border-radius:8px}
-  .phaser-battlefield::after{font-size:10px}
+  .battle-shell-head{top:4px;left:5px}.battle-shell-head>button{min-width:74px;padding:7px}
+  .turn-status{top:4px;min-width:0;max-width:55vw;font-size:11px;padding:7px 9px}
+  .toolbar{top:38px;right:5px}.toolbar button{font-size:10px;padding:6px}.toolbar #resetMap{display:none}
+  .phaser-battlefield::after{display:none}
+  #tacticalInfo{left:5px;bottom:136px;width:48vw;max-height:18vh;font-size:10px;padding:7px}
+  #skillBar{right:5px;bottom:136px;width:46vw;gap:3px}#skillBar button{font-size:10px;padding:7px 5px}
+  #cardPhasePanel{height:132px}
+  .fan-hand{width:94vw;bottom:-46px}
+  .fan-card{width:88px;min-width:88px;height:132px;margin-left:-30px;padding:7px 5px}
+  .fan-name{font-size:12px}.fan-card small{font-size:9px}
+  .battle-resource,.battle-deck-count{bottom:5px;font-size:11px;padding:5px 7px}
+  .card-phase-compact-actions{right:5px;bottom:35px}.card-phase-compact-actions button{font-size:10px;padding:6px}
+  .card-preview{bottom:112px;width:min(270px,86vw)}.preview-card-face{height:205px}
 }
