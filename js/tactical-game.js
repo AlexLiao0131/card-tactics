@@ -4,7 +4,7 @@
   const PHASE={CARD:"CARD_PHASE",PLAYER:"PLAYER_TURN",ENEMY:"ENEMY_TURN",ENDED:"MATCH_ENDED"};
 
   let map,units,selected,mode,selectedSkill,selectedSkillVariant,logs,round,phase,matchResult,stage,stageState,environmentState,inspectedTile;
-  let logState=BattleLog.create(),cardState=null,pendingCard=null,unitSerial=0;
+  let logState=BattleLog.create(),cardState=null,enemyCardState=null,pendingCard=null,unitSerial=0;
   let pendingEngagement=null;
   let supportSelection=new Map();
 
@@ -47,8 +47,9 @@
 
   function handleDefeated(unit,source,skillOrEffect){
     stageEvent({type:"UNIT_DEFEATED",unitId:unit.id,characterId:unit.character.id,team:unit.team});
-    if(unit.team===TEAM.PLAYER&&unit.cardId&&cardState){
-      CardPhaseEngine.characterDefeated(cardState,unit.cardId);
+    const ownerCardState=unit.team===TEAM.PLAYER?cardState:enemyCardState;
+    if(unit.cardId&&ownerCardState){
+      CardPhaseEngine.characterDefeated(ownerCardState,unit.cardId);
       pushLog(`${unit.character.name} 戰敗，角色卡進入墓地。`,"SYSTEM");
     }
   }
@@ -245,10 +246,16 @@
       crystalsPerTurn:Number(stage.cardRules?.crystalsPerTurn||10),
       handSize:Number(stage.cardRules?.handSize||5)
     });
+    enemyCardState=CardPhaseEngine.create({
+      deck:stage.enemyDeck||[],
+      crystalsPerTurn:Number(stage.enemyCardRules?.crystalsPerTurn||stage.cardRules?.crystalsPerTurn||10),
+      handSize:Number(stage.enemyCardRules?.handSize||stage.cardRules?.handSize||5)
+    });
     DeckEngine.shuffle(cardState.zones);
+    DeckEngine.shuffle(enemyCardState.zones);
 
-    stage.playerSpawns.forEach((u,i)=>units.push(createUnit("p"+i,TEAM.PLAYER,u.characterId,u.x,u.y)));
-    stage.enemySpawns.forEach((u,i)=>units.push(createUnit("e"+i,TEAM.ENEMY,u.characterId,u.x,u.y)));
+    (stage.playerSpawns||[]).forEach((u,i)=>units.push(createUnit("p"+i,TEAM.PLAYER,u.characterId,u.x,u.y)));
+    (stage.enemySpawns||[]).forEach((u,i)=>units.push(createUnit("e"+i,TEAM.ENEMY,u.characterId,u.x,u.y)));
 
     selected=null;
     inspectedTile=null;
@@ -440,21 +447,31 @@
     mode="idle";
   }
 
+  function hasDeployableCharacterCard(state){
+    if(!state)return false;
+    return [...state.zones.hand,...state.zones.deck].some(cardId=>CardDatabase.isCharacter(CardDatabase.get(cardId)));
+  }
+
+  function sideCanStillField(team){
+    if(living(team).length>0)return true;
+    return hasDeployableCharacterCard(team===TEAM.PLAYER?cardState:enemyCardState);
+  }
+
   function checkMatchEnd(){
-    if(living(TEAM.ENEMY).length===0){
+    if(!sideCanStillField(TEAM.ENEMY)){
       phase=PHASE.ENDED;
       matchResult="VICTORY";
       clearSelection();
       clearEnemyReaction();
-      pushLog(`Round ${round}｜VICTORY！敵方全滅。`);
+      pushLog(`Round ${round}｜VICTORY！敵方已無存活單位或可部署角色卡。`);
       return true;
     }
-    if(living(TEAM.PLAYER).length===0){
+    if(!sideCanStillField(TEAM.PLAYER)){
       phase=PHASE.ENDED;
       matchResult="DEFEAT";
       clearSelection();
       clearEnemyReaction();
-      pushLog(`Round ${round}｜DEFEAT！我方全滅。`);
+      pushLog(`Round ${round}｜DEFEAT！我方已無存活單位或可部署角色卡。`);
       return true;
     }
     return false;
@@ -591,12 +608,50 @@
     finishEnemyPhase();
   }
 
+  function enemyDeploymentTiles(){
+    const tiles=[];
+    DeploymentEngine.points(stage).forEach(point=>{
+      if(point.owner!=="ENEMY")return;
+      (point.area||[]).forEach(pos=>{
+        if(DeploymentEngine.canDeploy({stage,map,units,owner:"ENEMY",x:pos.x,y:pos.y}))tiles.push(pos);
+      });
+    });
+    return tiles;
+  }
+
+  function runEnemyCardPhase(){
+    if(!enemyCardState)return;
+    const handSize=Number(stage.enemyCardRules?.handSize||stage.cardRules?.handSize||5);
+    const drawn=CardPhaseEngine.begin(enemyCardState,{handSize});
+    pushLog(`Round ${round}｜敵方卡牌階段開始｜💎 ${enemyCardState.crystals}。`,"SYSTEM");
+    if(drawn.length)pushLog(`敵方抽牌 ${drawn.length} 張。`,"SYSTEM");
+
+    while(true){
+      const cardId=enemyCardState.zones.hand.find(id=>{
+        const card=CardDatabase.get(id);
+        return CardDatabase.isCharacter(card)&&CardPhaseEngine.canPlay(enemyCardState,card);
+      });
+      if(!cardId)break;
+      const tile=enemyDeploymentTiles()[0];
+      if(!tile)break;
+      const card=CardDatabase.get(cardId);
+      const unit=createUnit(`ec${unitSerial++}`,TEAM.ENEMY,card.characterId,tile.x,tile.y);
+      unit.cardId=card.id;
+      if(!CardPhaseEngine.commit(enemyCardState,card))break;
+      units.push(unit);
+      pushLog(`敵方使用「${card.name}」部署至 (${tile.x},${tile.y})｜消耗 ${card.cost} 水晶。`,"SYSTEM");
+    }
+    CardPhaseEngine.end(enemyCardState);
+  }
+
   function runEnemyPhase(){
     phase=PHASE.ENEMY;
     clearSelection();
     clearEnemyReaction();
-    resetActions(TEAM.ENEMY);
     pushLog(`Round ${round}｜敵方回合開始。`);
+    runEnemyCardPhase();
+    if(checkMatchEnd()){render();return;}
+    resetActions(TEAM.ENEMY);
     enemyQueue=[...living(TEAM.ENEMY)];
     render();
     continueEnemyPhase();
@@ -1528,6 +1583,7 @@
 
   window.CardTacticsRuntime={
     getCardState:()=>cardState,
+    getEnemyCardState:()=>enemyCardState,
     getBattleMap:()=>map,
     getPhase:()=>phase,
     getPendingCard:()=>pendingCard,
