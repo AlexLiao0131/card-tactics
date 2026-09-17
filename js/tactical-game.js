@@ -591,7 +591,14 @@
     pushLog(`Round ${round}｜我方回合結束。`);
     const endTurnDraws=CardPhaseEngine.resolveTurnEndEffects(cardState,{units,team:TEAM.PLAYER});
     endTurnDraws.forEach(result=>{
-      if(result.drawn.length)pushLog(`${result.sourceName}｜額外抽牌 ${result.drawn.length} 張。`,"SYSTEM");
+      const sourceUnit=units.find(unit=>unit.id===result.unitId);
+      const sourceLabel=sourceUnit?.character?.name?`${sourceUnit.character.name}【${result.sourceName}】`:`【${result.sourceName}】`;
+      if(result.drawn.length){
+        const drawnNames=result.drawn.map(cardId=>CardDatabase.get(cardId)?.name||cardId);
+        pushLog(`${sourceLabel}發動｜額外抽牌：${drawnNames.join("、")}｜目前手牌 ${cardState.zones.hand.length} 張。`,"SYSTEM");
+      }else{
+        pushLog(`${sourceLabel}發動｜牌庫已無可抽取卡牌。`,"SYSTEM");
+      }
     });
     runEnemyPhase();
   }
@@ -725,7 +732,7 @@
       if(d<range.min||d>range.max)return false;
       if(skill.shape==="LINE"){
         if(attacker.x!==tile.x&&attacker.y!==tile.y)return false;
-        if(skill.moveToTarget&&unitAt(tile.x,tile.y))return false;
+        if(skill.moveToTarget&&(unitAt(tile.x,tile.y)||!canTraverseMoveLine(attacker,tile)))return false;
       }
       if(skill.shape==="W_STEP"){
         if(unitAt(tile.x,tile.y)||TERRAINS[tile.terrain]?.passable===false)return false;
@@ -742,6 +749,17 @@
     while(x!==end.x||y!==end.y){out.push(map.tiles.find(t=>t.x===x&&t.y===y));x+=dx;y+=dy;}
     out.push(map.tiles.find(t=>t.x===end.x&&t.y===end.y));
     return out.filter(Boolean);
+  }
+  function canTraverseMoveLine(attacker,end){
+    const path=lineTiles(attacker,end);
+    if(!path.length)return false;
+    let previous=TacticalEngine.tile(map,attacker.x,attacker.y);
+    for(const tile of path){
+      if(!tile||TERRAINS[tile.terrain]?.passable===false)return false;
+      if(typeof TacticalEngine.canTraverseElevation==="function"&&!TacticalEngine.canTraverseElevation(previous,tile))return false;
+      previous=tile;
+    }
+    return true;
   }
   function aoeTiles(center,radius){
     const r=Number(radius||0);
