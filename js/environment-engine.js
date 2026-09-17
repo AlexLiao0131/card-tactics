@@ -1,7 +1,7 @@
 window.EnvironmentEngine=(()=>{
   const ELEMENT={NONE:"NONE",GRASS:"GRASS",WATER:"WATER",STONE:"STONE"};
   const FORCE={FIRE:"FIRE",HEAVY_FIRE:"HEAVY_FIRE",EXPLOSION:"EXPLOSION",WIND:"WIND",THUNDER:"THUNDER"};
-  const EFFECT={BURNING:"BURNING",STEAM:"STEAM",FRAGMENTS:"FRAGMENTS",FIRE_TORNADO:"FIRE_TORNADO",ELECTRIFIED:"ELECTRIFIED"};
+  const EFFECT={BURNING:"BURNING",STEAM:"STEAM",FRAGMENTS:"FRAGMENTS",TORNADO:"TORNADO",FIRE_TORNADO:"FIRE_TORNADO",ELECTRIFIED:"ELECTRIFIED"};
   const WEATHER={CLEAR:"CLEAR",FOG:"FOG",RAIN:"RAIN",HEAVY_RAIN:"HEAVY_RAIN",THUNDERSTORM:"THUNDERSTORM"};
   const WEATHER_RULES={THUNDERSTORM:{lightningChance:0.35,lightningDamage:60,metalWeight:2,waterWeight:2,treeWeight:2}};
   const METAL_EQUIPMENT_IDS=new Set(["black_sword","imperial_sword","standard_sword","blessed_sword","imperial_spear","imperial_hammer","imperial_medium_armor","imperial_heavy_shield_armor","water_medium_armor","imperial_heavy_armor","imperial_heavy_plate","imperial_large_shield"]);
@@ -87,9 +87,25 @@ window.EnvironmentEngine=(()=>{
     if(environment===ELEMENT.STONE&&forceSet.has(FORCE.EXPLOSION)){addEffect(state,x,y,{type:EFFECT.FRAGMENTS,duration:1,damageType:"PHYSICAL",radius:1});const object=objectAt(map,x,y),destroyed=destroyStoneObject(map,state,object);events.push({type:"STONE_FRAGMENT",x,y,effect:EFFECT.FRAGMENTS,destroyed,objectId:object?.id||null});}
     return events;
   }
+  function createTornado(state,x,y,{duration=2,pushDistance=2,damage=20,fireDamage=45}={}){
+    const burning=isBurning(state,x,y);
+    if(burning){
+      addEffect(state,x,y,{type:EFFECT.FIRE_TORNADO,duration,pushDistance,lightRadius:3,damage:fireDamage,damageType:"FIRE",visionBlock:false});
+      return {type:"FIRE_TORNADO_CREATED",x,y,effect:EFFECT.FIRE_TORNADO};
+    }
+    addEffect(state,x,y,{type:EFFECT.TORNADO,duration,pushDistance,damage,damageType:"PHYSICAL",visionBlock:false});
+    return {type:"TORNADO_CREATED",x,y,effect:EFFECT.TORNADO};
+  }
+  function pathInteraction({state,x,y,kind="UNIT"}={}){
+    const effects=effectAt(state,x,y);
+    const tornado=effects.find(e=>e.type===EFFECT.FIRE_TORNADO)||effects.find(e=>e.type===EFFECT.TORNADO);
+    if(!tornado||kind==="SPACE")return {interrupted:false,effects:[]};
+    if(kind==="PROJECTILE")return {interrupted:false,effects:[{type:"WIND_FIELD",effect:tornado}]};
+    return {interrupted:true,effects:[{type:"FORCED_MOVE",effect:tornado,distance:Number(tornado.pushDistance||2)}]};
+  }
   function tick(state){for(const [k,list] of [...state.effects.entries()]){const next=[];for(const effect of list){if(effect.duration==null){next.push(effect);continue;}const updated={...effect,duration:effect.duration-1};if(updated.duration>0)next.push(updated);}if(next.length)state.effects.set(k,next);else state.effects.delete(k);}}
   function lightSources(state){const out=[];for(const list of state.effects.values())for(const effect of list)if(effect.lightRadius>0)out.push({x:effect.x,y:effect.y,radius:effect.lightRadius,source:effect.type});return out;}
   function isLit(state,x,y){if(state.timeOfDay!=="NIGHT")return true;return lightSources(state).some(light=>Math.abs(light.x-x)+Math.abs(light.y-y)<=light.radius);}
   function visionModifier(state,x,y){const effects=effectAt(state,x,y);if(effects.some(e=>e.type===EFFECT.STEAM))return{blocked:true,reason:"STEAM"};if(state.timeOfDay==="NIGHT"&&!isLit(state,x,y))return{blocked:false,dark:true,reason:"NIGHT"};return{blocked:false,dark:false,reason:null};}
-  return{ELEMENT,FORCE,EFFECT,HAZARD,WEATHER,WEATHER_RULES,create,setTimeOfDay,setWeather,isRain,lightningRisk,rollWeatherEvent,environmentAt,effectAt,isBurning,isConductive,apply,tick,lightSources,isLit,visionModifier};
+  return{ELEMENT,FORCE,EFFECT,HAZARD,WEATHER,WEATHER_RULES,create,setTimeOfDay,setWeather,isRain,lightningRisk,rollWeatherEvent,environmentAt,effectAt,isBurning,isConductive,apply,createTornado,pathInteraction,tick,lightSources,isLit,visionModifier};
 })();

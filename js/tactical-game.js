@@ -118,18 +118,28 @@
   }
 
   function spellArea(center,radius){return aoeTiles(center,Number(radius||0));}
-  function canOccupyTile(tile,unit){return !!tile&&TERRAINS[tile.terrain]?.passable!==false&&!unitAt(tile.x,tile.y);}
-  function pushUnitFrom(center,unit,distance){
-    let moved=0;
-    for(let i=0;i<Number(distance||0);i++){
-      const dx=unit.x-center.x,dy=unit.y-center.y;
-      let sx=0,sy=0;
-      if(Math.abs(dx)>=Math.abs(dy)&&dx!==0)sx=Math.sign(dx);else if(dy!==0)sy=Math.sign(dy);else break;
-      const next=map.tiles.find(t=>t.x===unit.x+sx&&t.y===unit.y+sy);
-      if(!canOccupyTile(next,unit))break;
-      unit.x=next.x;unit.y=next.y;moved++;enterTile(unit);
+  function applyForcedMovement(source,target,distance,{name="強制位移"}={}){
+    const result=PostEngagementEngine.forcedMove({map,units,source,target,effect:{type:"KNOCKBACK",distance}});
+    if(result.applied){
+      pushLog(`${target.character.name} 被${name}推離 ${result.steps.length} 格。`,"BATTLE");
+      if(result.falls?.length)pushLog(`${target.character.name} 墜落｜墜落傷害 ${result.fallDamage}｜HP ${target.hp}。`,"BATTLE");
+      result.steps.forEach(()=>enterTile(target));
     }
-    return moved;
+    if(result.defeated)handleDefeated(target,source,{type:"ENVIRONMENT_FORCE",name});
+    return result;
+  }
+  function traverseUnitPath(unit,path,{kind="UNIT"}={}){
+    for(const tile of path||[]){
+      unit.x=tile.x;unit.y=tile.y;enterTile(unit);
+      if(!unit.alive)return {completed:false,reason:"DEFEATED"};
+      const interaction=EnvironmentEngine.pathInteraction({state:environmentState,x:tile.x,y:tile.y,kind});
+      const forced=interaction.effects?.find(e=>e.type==="FORCED_MOVE");
+      if(forced){
+        applyForcedMovement({x:tile.x,y:tile.y},unit,forced.distance,{name:forced.effect?.type==="FIRE_TORNADO"?"火龍捲":"龍捲風"});
+        return {completed:false,reason:"ENVIRONMENT_FORCE"};
+      }
+    }
+    return {completed:true};
   }
   function damageUnitFlat(unit,damage,sourceName){
     if(!unit?.alive)return;
@@ -146,18 +156,18 @@
       affected.forEach(tile=>(EnvironmentEngine.apply({map,state:environmentState,x:tile.x,y:tile.y,forces:effect.forces||["FIRE"]})||[]).forEach(logEnvironmentEvent));
       affected.forEach(tile=>{const u=unitAt(tile.x,tile.y);if(u)applyEnvironmentHazardToUnit(u,{reason:"遭野火波及"});});
     }else if(effect.type==="AREA_PUSH"){
-      const interactionEvents=[];
+      const tornadoEvents=affected.map(tile=>EnvironmentEngine.createTornado(environmentState,tile.x,tile.y,{
+        duration:2,pushDistance:Number(effect.distance||2),damage:Number(effect.damage||20),fireDamage:Number(effect.fireTornadoDamage||45)
+      }));
+      tornadoEvents.forEach(logEnvironmentEvent);
+      if(tornadoEvents.some(e=>e.type==="FIRE_TORNADO_CREATED"))pushLog(`🔥🌪 火焰與龍捲風結合，形成火龍捲！`,"SYSTEM");
       affected.forEach(tile=>{
-        const events=EnvironmentEngine.apply({map,state:environmentState,x:tile.x,y:tile.y,forces:effect.forces||["WIND"]})||[];
-        interactionEvents.push(...events);
-        events.forEach(logEnvironmentEvent);
+        const u=unitAt(tile.x,tile.y);if(!u)return;
+        const active=EnvironmentEngine.effectAt(environmentState,tile.x,tile.y);
+        const wind=active.find(e=>e.type===EnvironmentEngine.EFFECT.FIRE_TORNADO)||active.find(e=>e.type===EnvironmentEngine.EFFECT.TORNADO);
+        damageUnitFlat(u,Number(wind?.damage||effect.damage||20),wind?.type===EnvironmentEngine.EFFECT.FIRE_TORNADO?"火龍捲":card.name);
+        if(u.alive)applyForcedMovement(center,u,Number(wind?.pushDistance||effect.distance||2),{name:wind?.type===EnvironmentEngine.EFFECT.FIRE_TORNADO?"火龍捲":"龍捲風"});
       });
-      const fireTornado=interactionEvents.some(e=>e.type==="FIRE_TORNADO_CREATED");
-      if(fireTornado){
-        pushLog(`🔥🌪 火焰與龍捲風結合，形成火龍捲！`,"SYSTEM");
-        affected.forEach(tile=>(EnvironmentEngine.apply({map,state:environmentState,x:tile.x,y:tile.y,forces:["HEAVY_FIRE"]})||[]).forEach(logEnvironmentEvent));
-      }
-      affected.forEach(tile=>{const u=unitAt(tile.x,tile.y);if(!u)return;damageUnitFlat(u,fireTornado?Number(effect.fireTornadoDamage||45):Number(effect.damage||20),fireTornado?"火龍捲":card.name);if(u.alive){const moved=pushUnitFrom(center,u,effect.distance||2);if(moved)pushLog(`${u.character.name} 被吹離 ${moved} 格。`,"BATTLE");}});
     }else if(effect.type==="AREA_HEAL"){
       affected.forEach(tile=>{const u=unitAt(tile.x,tile.y);if(!u?.alive||u.team!==TEAM.PLAYER)return;const before=u.hp;u.hp=Math.min(u.character.combat.hp,u.hp+Number(effect.heal||0));pushLog(`${card.name} → ${u.character.name}｜回復 ${u.hp-before} HP｜HP ${u.hp}。`,"BATTLE");});
     }else if(effect.type==="AREA_DAMAGE"){
@@ -780,6 +790,7 @@
     else if(event.type==="WATER_EVAPORATED")pushLog(`高熱蒸乾 (${event.x},${event.y}) 的水域，地形轉為陸地。`,"SYSTEM");
     else if(event.type==="STEAM_CREATED")pushLog(`高熱與水分作用，(${event.x},${event.y}) 產生蒸氣迷霧。`,"SYSTEM");
     else if(event.type==="STONE_FRAGMENT")pushLog(`爆炸擊中石質物件，(${event.x},${event.y}) 產生破片${event.destroyed?"並炸開道路":""}。`,"SYSTEM");
+    else if(event.type==="TORNADO_CREATED")pushLog(`(${event.x},${event.y}) 形成龍捲風場。`,"DETAIL");
     else if(event.type==="FIRE_TORNADO_CREATED")pushLog(`(${event.x},${event.y}) 的燃燒區被風捲起，形成火龍捲。`,"SYSTEM");
     else if(event.type==="ELECTRIC_CONDUCTION")pushLog(`⚡ (${event.x},${event.y}) 發生雷元素傳導。`,"SYSTEM");
   }
@@ -816,8 +827,13 @@
     });
     pushLog(`${attacker.character.name} 使用 ${skill.name}｜中心 (${center.x},${center.y})。`,"BATTLE");
     if(skill.moveToTarget&&!unitAt(center.x,center.y)){
-      attacker.x=center.x;attacker.y=center.y;enterTile(attacker);
-      pushLog(`${attacker.character.name} 隨 ${skill.name} 移動至 (${center.x},${center.y})。`,"BATTLE");
+      if(skill.shape==="W_STEP"){
+        attacker.x=center.x;attacker.y=center.y;enterTile(attacker);
+        pushLog(`${attacker.character.name} 隨 ${skill.name} 進行空間移動至 (${center.x},${center.y})。`,"BATTLE");
+      }else{
+        const moveResult=traverseUnitPath(attacker,lineTiles(attacker,center),{kind:"UNIT"});
+        pushLog(`${attacker.character.name} 隨 ${skill.name} ${moveResult.completed?`移動至 (${attacker.x},${attacker.y})`:"移動途中受到環境影響而中斷"}。`,"BATTLE");
+      }
     }
     if(checkMatchEnd()){selectedSkill=null;selectedSkillVariant=null;render();return true;}
     attacker.moved=true;attacker.acted=true;attacker.waited=true;
@@ -827,6 +843,7 @@
   }
 
   const TILE_EFFECT_INFO={
+    TORNADO:{name:"龍捲風",interaction:"持續風場；地面單位進入時觸發共用強制位移與墜落判定。"},
     BURNING:{name:"燃燒",interaction:"小火可被水／豪雨熄滅；風可使燃燒區形成火龍捲。"},
     STEAM:{name:"蒸氣",interaction:"遮蔽視線；持續時間結束後消散。"},
     FRAGMENTS:{name:"岩石破片",interaction:"爆炸擊中石質環境時產生的物理破片效果。"},
@@ -974,11 +991,10 @@
     }
 
     if(selected&&!selected.acted&&mode==="command"&&!selected.moved&&!unit&&reachable.has(tile.x+","+tile.y)){
-      selected.x=tile.x;
-      selected.y=tile.y;
+      const path=TacticalEngine.pathTo(map,units,selected,tile.x,tile.y);
+      const moveResult=traverseUnitPath(selected,path,{kind:"UNIT"});
       selected.moved=true;
-      pushLog(`${selected.character.name} 移動完成。`);
-      enterTile(selected);
+      pushLog(`${selected.character.name} ${moveResult.completed?"移動完成":"移動途中受到環境影響而中斷"}。`);
       render();
       return;
     }

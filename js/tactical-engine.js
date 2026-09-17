@@ -1,7 +1,6 @@
 window.TacticalEngine=(()=>{
   const K=(x,y)=>x+","+y,D=(a,b)=>Math.abs(a.x-b.x)+Math.abs(a.y-b.y);
   const MAX_NORMAL_CLIMB=1,MAX_NORMAL_DROP=1;
-
   function tile(m,x,y){return m.tiles.find(t=>t.x===x&&t.y===y)}
   function occupied(us,x,y,id){return us.some(u=>u.alive&&u.id!==id&&u.x===x&&u.y===y)}
   function elevation(t){return Number(t?.elevation||0)}
@@ -39,6 +38,27 @@ window.TacticalEngine=(()=>{
     }
     b.delete(K(u.x,u.y));return b
   }
+  function pathTo(m,us,u,endX,endY){
+    const start=K(u.x,u.y),goal=K(endX,endY),max=u.character.combat.move;
+    const best=new Map([[start,0]]),prev=new Map(),q=[{x:u.x,y:u.y,c:0}];
+    while(q.length){
+      q.sort((a,b)=>a.c-b.c);
+      const n=q.shift(),nk=K(n.x,n.y);
+      if(n.c!==best.get(nk))continue;
+      if(nk===goal)break;
+      const from=tile(m,n.x,n.y);
+      for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
+        const x=n.x+dx,y=n.y+dy,t=tile(m,x,y),k=K(x,y);
+        if(!t||!TERRAINS[t.terrain]?.passable||occupied(us,x,y,u.id)||!canTraverseElevation(from,t,u))continue;
+        const c=n.c+cost(u,t);
+        if(c<=max&&(!best.has(k)||c<best.get(k))){best.set(k,c);prev.set(k,nk);q.push({x,y,c})}
+      }
+    }
+    if(!best.has(goal))return[];
+    const path=[];let k=goal;
+    while(k!==start){const [x,y]=k.split(",").map(Number);path.push(tile(m,x,y));k=prev.get(k);if(!k)return[]}
+    return path.reverse()
+  }
   function range(s){return s.range}
   function targets(us,u,s){
     let r=range(s);
@@ -54,5 +74,5 @@ window.TacticalEngine=(()=>{
         dc={...d.character,modifiers:{...(d.character.modifiers||{}),evasion:Number(d.character.modifiers?.evasion||0)+eva}};
     return{result:BattleEngine.calculate(ac,dc,s,opt),terrain:{acc,eva,at,dt}}
   }
-  return{tile,elevation,elevationDelta,canTraverseElevation,canActiveMove,reachable,range,targets,resolve}
+  return{tile,elevation,elevationDelta,canTraverseElevation,canActiveMove,reachable,pathTo,range,targets,resolve}
 })();
