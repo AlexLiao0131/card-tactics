@@ -1,4 +1,4 @@
-/* Full-screen Phaser battle surface */
+/* Card Tactics — formal Phaser battle surface */
 .battle-screen.active{height:100vh;min-height:0;overflow:hidden;background:#0b1118}
 .battle-screen main{position:relative;width:100%;max-width:none;height:100vh;margin:0;padding:0;overflow:hidden}
 .battle-shell-head{position:absolute;left:10px;top:8px;z-index:40;pointer-events:none}
@@ -9,8 +9,10 @@
 .phaser-battlefield{position:absolute;inset:0;width:100%;height:100%;min-height:0;overflow:hidden;border:0;border-radius:0;background:#111820;touch-action:none}
 .phaser-battlefield canvas{display:block;width:100%!important;height:100%!important;touch-action:none}
 .phaser-error{position:absolute;inset:0;display:grid;place-items:center;padding:24px;text-align:center;color:#ffd0d0;background:#251313}
-.battlefield.phaser-source{position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;opacity:0!important;pointer-events:none!important;clip-path:inset(50%)!important}
-.phaser-battlefield::after{content:"拖曳移動 · 雙指縮放";position:absolute;right:10px;top:10px;z-index:2;pointer-events:none;font-size:11px;color:#d8e1ecaa;background:#081018aa;border:1px solid #53606d88;border-radius:6px;padding:5px 8px}
+
+/* DOM battlefield is compatibility state/input only. It is not a second renderer. */
+.battlefield.phaser-source{display:none!important}
+
 .turn-status{position:absolute;z-index:35;top:8px;left:50%;transform:translateX(-50%);width:auto;min-width:260px;margin:0;padding:8px 14px;background:#081018cc}
 .toolbar{position:absolute;z-index:35;right:10px;top:42px;display:flex;gap:5px}
 .toolbar button{width:auto;padding:7px 10px;background:#081018cc}
@@ -18,13 +20,23 @@
 #skillBar{position:absolute;z-index:36;right:10px;bottom:145px;width:min(390px,42vw);margin:0}
 #battleLog,.log-tabs,.battle-screen details{display:none}
 
-/* Hand becomes an overlay over the battlefield, not a separate page block. */
+/* Selected-unit HUD */
+.battle-unit-hud{position:absolute;z-index:39;left:50%;top:52px;transform:translate(-50%,-8px);display:flex;align-items:center;gap:9px;width:min(390px,72vw);min-height:62px;padding:7px 10px;border:1px solid #647487;border-radius:12px;background:#081018e8;box-shadow:0 8px 24px #0008;opacity:0;pointer-events:none;transition:.14s ease}
+.battle-unit-hud.visible{opacity:1;transform:translate(-50%,0)}
+.battle-unit-portrait{width:48px;height:48px;flex:0 0 48px;border-radius:8px;overflow:hidden;border:1px solid #7d8da0;background:#1d2a38}
+.battle-unit-portrait img,.battle-unit-portrait span{width:100%;height:100%;object-fit:cover}
+.battle-unit-portrait span{display:grid;place-items:center;font-size:22px;font-weight:900}
+.battle-unit-summary{min-width:0;flex:1}.battle-unit-name{font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.battle-unit-hp{height:8px;margin-top:4px;border-radius:99px;background:#351b1b;overflow:hidden}.battle-unit-hp i{display:block;height:100%;background:#55a96a}
+.battle-unit-hp-text,.battle-unit-status{margin-top:2px;font-size:10px;color:#d8e1ec}.battle-unit-status{color:#f0d89b}
+
+/* Hand overlay */
 .battle-hand-shell{position:absolute!important;z-index:50;left:0;right:0;bottom:0;margin:0!important;padding:0!important;border:0!important;background:transparent!important;pointer-events:none}
 #cardPhasePanel{position:relative;height:142px;pointer-events:none}
 .battle-resource,.battle-deck-count{position:absolute;bottom:12px;z-index:56;padding:7px 10px;border:1px solid #5b6572;border-radius:8px;background:#081018dd;font-weight:800;pointer-events:auto}
 .battle-resource{left:10px}.battle-deck-count{right:10px}
 .fan-hand{position:absolute;left:50%;bottom:-38px;transform:translateX(-50%);height:170px;width:min(760px,82vw);display:flex;justify-content:center;align-items:flex-end;pointer-events:none}
-.fan-card{--rot:calc(var(--fan)*4deg);width:112px;min-width:112px;height:154px;margin-left:-24px;padding:10px 8px 8px;border-radius:10px;border:2px solid #a98c58;background:linear-gradient(160deg,#26354a,#0c121b 70%);box-shadow:0 5px 18px #0009;transform:translateY(calc(abs(var(--fan))*5px)) rotate(var(--rot));transform-origin:50% 120%;pointer-events:auto;position:relative;transition:transform .16s ease,filter .16s ease;overflow:hidden}
+.fan-card{--rot:calc(var(--fan)*4deg);width:112px;min-width:112px;height:154px;margin-left:-24px;padding:10px 8px 8px;border-radius:10px;border:2px solid #a98c58;background:linear-gradient(160deg,#26354a,#0c121b 70%);box-shadow:0 5px 18px #0009;transform:rotate(var(--rot));transform-origin:50% 120%;pointer-events:auto;position:relative;transition:transform .16s ease,filter .16s ease;overflow:hidden}
 .fan-card:first-child{margin-left:0}.fan-card:not(:disabled):active,.fan-card.previewing{transform:translateY(-34px) rotate(0deg);z-index:10}
 .fan-card:disabled{filter:grayscale(.75);opacity:.58}.fan-card.pending{outline:3px solid #70e38b}
 .fan-cost{position:absolute;left:7px;top:7px;width:27px;height:27px;border-radius:50%;display:grid;place-items:center;background:#3566a8;border:1px solid #bcd6ff;font-weight:900}
@@ -39,11 +51,10 @@
   .battle-shell-head{top:4px;left:5px}.battle-shell-head>button{min-width:74px;padding:7px}
   .turn-status{top:4px;min-width:0;max-width:55vw;font-size:11px;padding:7px 9px}
   .toolbar{top:38px;right:5px}.toolbar button{font-size:10px;padding:6px}.toolbar #resetMap{display:none}
-  .phaser-battlefield::after{display:none}
+  .battle-unit-hud{top:78px;width:min(330px,76vw);min-height:54px;padding:5px 7px}.battle-unit-portrait{width:42px;height:42px;flex-basis:42px}
   #tacticalInfo{left:5px;bottom:136px;width:48vw;max-height:18vh;font-size:10px;padding:7px}
   #skillBar{right:5px;bottom:136px;width:46vw;gap:3px}#skillBar button{font-size:10px;padding:7px 5px}
-  #cardPhasePanel{height:132px}
-  .fan-hand{width:94vw;bottom:-46px}
+  #cardPhasePanel{height:132px}.fan-hand{width:94vw;bottom:-46px}
   .fan-card{width:88px;min-width:88px;height:132px;margin-left:-30px;padding:7px 5px}
   .fan-name{font-size:12px}.fan-card small{font-size:9px}
   .battle-resource,.battle-deck-count{bottom:5px;font-size:11px;padding:5px 7px}
