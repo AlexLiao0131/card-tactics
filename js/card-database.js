@@ -20,6 +20,12 @@ window.CARDS={
   avalanche_card:{id:"avalanche_card",name:"雪崩",type:"SPELL",spellType:"TACTICAL",faction:"HUNTER",cost:6,effect:{type:"AREA_DAMAGE_PUSH"}},
   cassandra_blessing_card:{id:"cassandra_blessing_card",name:"卡珊多拉的祝福",type:"SPELL",spellType:"BUFF",faction:"HUNTER",cost:4,effect:{type:"BUFF"}},
   rain_card:{id:"rain_card",name:"豪大雨",type:"SPELL",spellType:"WEATHER",faction:"NEUTRAL",cost:4,effect:{type:"WEATHER",weather:"HEAVY_RAIN"}},
-  resurrection_card:{id:"resurrection_card",name:"復甦",type:"SPELL",spellType:"REVIVE",faction:"NEUTRAL",cost:7,effect:{type:"REVIVE",zone:"GRAVEYARD"}}
+  resurrection_card:{id:"resurrection_card",name:"復甦",type:"SPELL",spellType:"REVIVE",faction:"NEUTRAL",cost:7,effect:{type:"REVIVE",zone:"GRAVEYARD"}},
+
+  reina_card:{id:"reina_card",name:"蕾娜",type:"CHARACTER",characterId:"reina",faction:"ELF_EMPIRE",unitType:"HERO",cost:6},
+  elf_shapeshifter_card:{id:"elf_shapeshifter_card",name:"精靈幻獸者",type:"CHARACTER",characterId:"elf_shapeshifter",faction:"ELF_EMPIRE",unitType:"UNIT",cost:4},
+  elf_ranger_card:{id:"elf_ranger_card",name:"精靈遊俠",type:"CHARACTER",characterId:"elf_ranger",faction:"ELF_EMPIRE",unitType:"UNIT",cost:4},
+  elf_guard_card:{id:"elf_guard_card",name:"精靈衛士",type:"CHARACTER",characterId:"elf_guard",faction:"ELF_EMPIRE",unitType:"UNIT",cost:4},
+  elf_priest_card:{id:"elf_priest_card",name:"精靈祭司",type:"CHARACTER",characterId:"elf_priest",faction:"ELF_EMPIRE",unitType:"UNIT",cost:4}
 };
 window.CardDatabase=(()=>({get(id){return CARDS[id]||null;},list(ids){return(ids||[]).map(id=>CARDS[id]).filter(Boolean);},isCharacter(card){return card?.type==="CHARACTER";},isSpell(card){return card?.type==="SPELL";}}))();
