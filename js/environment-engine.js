@@ -2,8 +2,8 @@ window.EnvironmentEngine=(()=>{
   const ELEMENT={NONE:"NONE",GRASS:"GRASS",WATER:"WATER",STONE:"STONE"};
   const FORCE={FIRE:"FIRE",HEAVY_FIRE:"HEAVY_FIRE",EXPLOSION:"EXPLOSION",WIND:"WIND",THUNDER:"THUNDER"};
   const EFFECT={BURNING:"BURNING",STEAM:"STEAM",FRAGMENTS:"FRAGMENTS",FIRE_TORNADO:"FIRE_TORNADO",ELECTRIFIED:"ELECTRIFIED"};
-  const WEATHER={CLEAR:"CLEAR",FOG:"FOG",RAIN:"RAIN",HEAVY_RAIN:"HEAVY_RAIN"};
-  const WEATHER_RULES={HEAVY_RAIN:{lightningChance:0.35,lightningDamage:60,metalWeight:2,waterWeight:2,treeWeight:2}};
+  const WEATHER={CLEAR:"CLEAR",FOG:"FOG",RAIN:"RAIN",HEAVY_RAIN:"HEAVY_RAIN",THUNDERSTORM:"THUNDERSTORM"};
+  const WEATHER_RULES={THUNDERSTORM:{lightningChance:0.35,lightningDamage:60,metalWeight:2,waterWeight:2,treeWeight:2}};
   const METAL_EQUIPMENT_IDS=new Set(["black_sword","imperial_sword","standard_sword","blessed_sword","imperial_spear","imperial_hammer","imperial_medium_armor","imperial_heavy_shield_armor","water_medium_armor","imperial_heavy_armor","imperial_heavy_plate","imperial_large_shield"]);
   const HAZARD={BURNING_DAMAGE:20,FIRE_TORNADO_DAMAGE:45,ELECTRIC_DAMAGE:35};
   function key(x,y){return `${x},${y}`;}
@@ -38,10 +38,10 @@ window.EnvironmentEngine=(()=>{
     }
     return events;
   }
-  function isRain(state){return state?.weather===WEATHER.RAIN||state?.weather===WEATHER.HEAVY_RAIN;}
+  function isRain(state){return state?.weather===WEATHER.RAIN||state?.weather===WEATHER.HEAVY_RAIN||state?.weather===WEATHER.THUNDERSTORM;}
   function hasMetalEquipment(unit){return EquipmentDatabase.equippedItems(unit?.character).some(item=>item?.material==="METAL"||item?.conductive===true||METAL_EQUIPMENT_IDS.has(item?.id));}
-  function lightningRisk(map,unit){if(!unit?.alive)return{weight:0,reasons:[]};const rules=WEATHER_RULES.HEAVY_RAIN;let weight=1;const reasons=[];if(hasMetalEquipment(unit)){weight*=rules.metalWeight;reasons.push("METAL");}const material=environmentAt(map,unit.x,unit.y);if(material===ELEMENT.WATER){weight*=rules.waterWeight;reasons.push("WATER");}if(material===ELEMENT.GRASS){weight*=rules.treeWeight;reasons.push("TREE");}return{weight,reasons};}
-  function rollWeatherEvent({map,state,units=[],random=Math.random}){if(!state||state.weather!==WEATHER.HEAVY_RAIN)return[];const rules=WEATHER_RULES.HEAVY_RAIN;if(random()>=rules.lightningChance)return[];const candidates=units.filter(u=>u?.alive).map(unit=>({unit,...lightningRisk(map,unit)})).filter(x=>x.weight>0);if(!candidates.length)return[];let roll=random()*candidates.reduce((n,x)=>n+x.weight,0),chosen=candidates[candidates.length-1];for(const candidate of candidates){roll-=candidate.weight;if(roll<=0){chosen=candidate;break;}}return[{type:"LIGHTNING_STRIKE",unit:chosen.unit,x:chosen.unit.x,y:chosen.unit.y,damage:rules.lightningDamage,riskReasons:chosen.reasons,weight:chosen.weight}];}
+  function lightningRisk(map,unit){if(!unit?.alive)return{weight:0,reasons:[]};const rules=WEATHER_RULES.THUNDERSTORM;let weight=1;const reasons=[];if(hasMetalEquipment(unit)){weight*=rules.metalWeight;reasons.push("METAL");}const material=environmentAt(map,unit.x,unit.y);if(material===ELEMENT.WATER){weight*=rules.waterWeight;reasons.push("WATER");}if(material===ELEMENT.GRASS){weight*=rules.treeWeight;reasons.push("TREE");}return{weight,reasons};}
+  function rollWeatherEvent({map,state,units=[],random=Math.random}){if(!state||state.weather!==WEATHER.THUNDERSTORM)return[];const rules=WEATHER_RULES.THUNDERSTORM;if(random()>=rules.lightningChance)return[];const candidates=units.filter(u=>u?.alive).map(unit=>({unit,...lightningRisk(map,unit)})).filter(x=>x.weight>0);if(!candidates.length)return[];let roll=random()*candidates.reduce((n,x)=>n+x.weight,0),chosen=candidates[candidates.length-1];for(const candidate of candidates){roll-=candidate.weight;if(roll<=0){chosen=candidate;break;}}return[{type:"LIGHTNING_STRIKE",unit:chosen.unit,x:chosen.unit.x,y:chosen.unit.y,damage:rules.lightningDamage,riskReasons:chosen.reasons,weight:chosen.weight}];}
   function effectAt(state,x,y){return state?.effects?.get(key(x,y))||[];}
   function addEffect(state,x,y,effect){const k=key(x,y),list=state.effects.get(k)||[],same=list.find(e=>e.type===effect.type);if(same)Object.assign(same,effect);else list.push({...effect,x,y});state.effects.set(k,list);return effect;}
   function removeEffect(state,x,y,type){const k=key(x,y),next=(state.effects.get(k)||[]).filter(e=>e.type!==type);if(next.length)state.effects.set(k,next);else state.effects.delete(k);}

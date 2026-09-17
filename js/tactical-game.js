@@ -104,7 +104,7 @@
         const weatherEvents=environmentState?EnvironmentEngine.setWeather(environmentState,weather,map):[];
         pushLog(`施放卡牌魔法「${card.name}」｜消耗 ${card.cost} 水晶。`,"SYSTEM");
         weatherEvents.forEach(logEnvironmentEvent);
-        pushLog(`天候變更：${weather==="HEAVY_RAIN"?"雷雨／豪大雨":weather==="FOG"?"迷霧":weather}。`,"SYSTEM");
+        pushLog(`天候變更：${weather==="THUNDERSTORM"?"雷雨":weather==="HEAVY_RAIN"?"豪大雨":weather==="FOG"?"迷霧":weather}。`,"SYSTEM");
         pendingCard=null;render();window.dispatchEvent(new CustomEvent("cardtactics:state"));return true;
       }
       if(["AREA_FIRE","AREA_PUSH","AREA_HEAL","AREA_DAMAGE"].includes(card.effect?.type)){
@@ -146,10 +146,13 @@
       affected.forEach(tile=>(EnvironmentEngine.apply({map,state:environmentState,x:tile.x,y:tile.y,forces:effect.forces||["FIRE"]})||[]).forEach(logEnvironmentEvent));
       affected.forEach(tile=>{const u=unitAt(tile.x,tile.y);if(u)applyEnvironmentHazardToUnit(u,{reason:"遭野火波及"});});
     }else if(effect.type==="AREA_PUSH"){
-      const centerWasBurning=EnvironmentEngine.isBurning(environmentState,center.x,center.y);
-      const interactionEvents=EnvironmentEngine.apply({map,state:environmentState,x:center.x,y:center.y,forces:effect.forces||["WIND"]})||[];
-      interactionEvents.forEach(logEnvironmentEvent);
-      const fireTornado=centerWasBurning||interactionEvents.some(e=>e.type==="FIRE_TORNADO_CREATED");
+      const interactionEvents=[];
+      affected.forEach(tile=>{
+        const events=EnvironmentEngine.apply({map,state:environmentState,x:tile.x,y:tile.y,forces:effect.forces||["WIND"]})||[];
+        interactionEvents.push(...events);
+        events.forEach(logEnvironmentEvent);
+      });
+      const fireTornado=interactionEvents.some(e=>e.type==="FIRE_TORNADO_CREATED");
       if(fireTornado){
         pushLog(`🔥🌪 火焰與龍捲風結合，形成火龍捲！`,"SYSTEM");
         affected.forEach(tile=>(EnvironmentEngine.apply({map,state:environmentState,x:tile.x,y:tile.y,forces:["HEAVY_FIRE"]})||[]).forEach(logEnvironmentEvent));
@@ -831,7 +834,7 @@
     ELECTRIFIED:{name:"帶電",interaction:"雷元素在水域或雨天可發生傳導。"}
   };
   const TILE_ENVIRONMENT_NAME={NONE:"一般",GRASS:"草木",WATER:"水",STONE:"石質"};
-  const WEATHER_NAME={CLEAR:"晴朗",FOG:"迷霧",RAIN:"雨",HEAVY_RAIN:"豪雨／雷雨"};
+  const WEATHER_NAME={CLEAR:"晴朗",FOG:"迷霧",RAIN:"雨",HEAVY_RAIN:"豪大雨",THUNDERSTORM:"雷雨"};
 
   function tileInteractions(tile,effects){
     const environment=EnvironmentEngine.environmentAt(map,tile.x,tile.y);
