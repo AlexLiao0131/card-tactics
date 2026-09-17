@@ -1528,6 +1528,7 @@
 
   window.CardTacticsRuntime={
     getCardState:()=>cardState,
+    getBattleMap:()=>map,
     getPhase:()=>phase,
     getPendingCard:()=>pendingCard,
     playCard:selectCardForPlay,

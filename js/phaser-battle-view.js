@@ -44,6 +44,8 @@ const BattleStateAdapter=(()=>{
     return window.StageDatabase?.get?.(id)||window.STAGES?.[id]||null;
   }
   function map(){
+    const runtimeMap=window.CardTacticsRuntime?.getBattleMap?.();
+    if(runtimeMap)return runtimeMap;
     const s=stage();
     if(!s)return null;
     return window.MapDatabase?.createMap?.(s.mapId)||null;
@@ -104,11 +106,14 @@ const BattleStateAdapter=(()=>{
       };
     });
     const units=cells.map((cell,index)=>parseUnit(cell,index,m.width)).filter(Boolean);
-    const objects=(m.objects||[]).map(object=>{
-      const runtimeTile=tiles.find(tile=>tile.x===object.x&&tile.y===object.y);
-      const destroyed=object.destructible&&object.breaksIntoTerrain&&runtimeTile?.terrain===object.breaksIntoTerrain;
-      return {...object,destroyed:object.destroyed||!!destroyed};
-    });
+    const hasRuntimeMap=!!window.CardTacticsRuntime?.getBattleMap?.();
+    const objects=hasRuntimeMap
+      ?(m.objects||[]).map(object=>({...object}))
+      :(m.objects||[]).map(object=>{
+        const runtimeTile=tiles.find(tile=>tile.x===object.x&&tile.y===object.y);
+        const destroyed=object.destructible&&object.breaksIntoTerrain&&runtimeTile?.terrain===object.breaksIntoTerrain;
+        return {...object,destroyed:object.destroyed||!!destroyed};
+      });
     return {
       stage:s,map:{...m,tiles,objects},units,
       selectedUnit:units.find(u=>u.selected)||null,
