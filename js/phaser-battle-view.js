@@ -1,245 +1,374 @@
 (()=>{
-  "use strict";
-  const host=document.getElementById("phaserBattlefield");
-  const source=document.getElementById("battlefield");
-  const battleScreen=document.getElementById("battleScreen");
-  if(!host||!source||!battleScreen)return;
+"use strict";
 
-  const TILE_W=100;
-  const TILE_H=50;
-  const ELEV_H=30;
-  const PAD_X=28;
-  const PAD_Y=150;
-  const TERRAIN={
-    plain:0x405b49,mud:0x6b573f,forest:0x2d6745,
-    high_ground:0x7b6d43,water:0x287292,wall:0x606873
-  };
-  let game=null,sceneRef=null,queued=false,drag=null,pinch=null,lastOrientation=null;
+/*
+  Card Tactics Phaser Battle Renderer
+  -----------------------------------
+  Rules/state remain owned by the existing runtime.
+  This file has three explicit layers:
+  1. BattleStateAdapter: converts current runtime/DOM state into one normalized snapshot.
+  2. IsoProjection: pure grid -> screen geometry. No stage-specific coordinates.
+  3. BattleRenderer: Phaser rendering/input/camera only.
 
-  function mapData(){
-    const stageId=window.CardTacticsBattleSetup?.stageId||"prototype_battle";
-    const stage=window.StageDatabase?.get?.(stageId)||window.STAGES?.[stageId]||window.STAGES?.prototype_battle;
-    return window.MAPS?.[stage?.mapId]||window.MAPS?.prototype_field||{width:8,height:6,terrain:[]};
-  }
-  function dims(){
-    const m=mapData();
-    return {cols:Number(m.width||8),rows:Number(m.height||6)};
-  }
-  function cells(){return [...source.children].filter(el=>el.classList.contains("tile"));}
-  function portrait(){return host.clientHeight>=host.clientWidth;}
-  function tileData(x,y){
-    const m=mapData();
-    return (m.terrain||[]).find(t=>t.x===x&&t.y===y)||null;
-  }
-  function elevation(x,y,cell){
-    const t=tileData(x,y);
-    if(Number.isFinite(t?.elevation))return Number(t.elevation);
-    const n=Number((cell?.querySelector(".elev")?.textContent||"").replace(/\D/g,""));
-    return Number.isFinite(n)?n:0;
-  }
-  function terrainColor(cell){
-    for(const [name,color] of Object.entries(TERRAIN))if(cell.classList.contains(name))return color;
-    return TERRAIN.plain;
-  }
+  The DOM battlefield is a temporary compatibility input, never a visual layer.
+*/
 
-  /* Formal projection:
-     portrait rotates the PRESENTATION only. Logical x/y never change.
-     Logical X is the battle-front axis (player x=0 -> enemy x=max), therefore it
-     runs vertically on a portrait phone. Logical Y spans the phone width. */
-  function geometry(){
-    const {cols,rows}=dims(),p=portrait();
-    if(p){
-      const usable=Math.max(220,host.clientWidth-PAD_X*2);
-      const across=Math.max(1,rows-1);
-      const stepAcross=Math.min(TILE_W*.56,(usable-TILE_W*.55)/across);
-      const tileW=Math.min(TILE_W,Math.max(62,stepAcross*1.78));
-      const tileH=tileW*.50;
-      const depthStep=tileH*.92;
-      const worldW=Math.max(host.clientWidth,usable+PAD_X*2);
-      const worldH=Math.max(host.clientHeight+260,PAD_Y*2+(cols-1)*depthStep+tileH*3+ELEV_H*3);
-      return {p,cols,rows,tileW,tileH,acrossStep:stepAcross,depthStep,
-        originX:worldW/2,originY:PAD_Y,worldW,worldH};
-    }
-    const tileW=TILE_W,tileH=TILE_H;
-    const worldW=(cols+rows)*tileW/2+220;
-    const worldH=(cols+rows)*tileH/2+ELEV_H*3+240;
-    return {p,cols,rows,tileW,tileH,acrossStep:tileW/2,depthStep:tileH/2,
-      originX:worldW/2,originY:130,worldW,worldH};
+const host=document.getElementById("phaserBattlefield");
+const source=document.getElementById("battlefield");
+const battleScreen=document.getElementById("battleScreen");
+if(!host||!source||!battleScreen)return;
+
+const CONFIG=Object.freeze({
+  tileWidth:104,
+  tileHeight:68,
+  elevationHeight:34,
+  viewportPadding:22,
+  worldPadding:120,
+  unitLift:42,
+  minZoom:.62,
+  maxZoom:1.55
+});
+
+const COLORS=Object.freeze({
+  PLAIN:0x405b49,MUD:0x6b573f,FOREST:0x2d6745,HIGH_GROUND:0x817243,
+  WATER:0x287292,WALL:0x606873,grid:0x9aa6af,
+  cliffA:0x51472f,cliffB:0x65583a
+});
+
+let game=null,sceneRef=null,drawQueued=false,drag=null,pinch=null,lastViewportKey="";
+
+/* ---------- State adapter ---------- */
+const BattleStateAdapter=(()=>{
+  function stage(){
+    const id=window.CardTacticsBattleSetup?.stageId||"prototype_battle";
+    return window.StageDatabase?.get?.(id)||window.STAGES?.[id]||null;
   }
-  function project(x,y,e=0,G=geometry()){
-    if(G.p){
-      return {
-        x:G.originX+(y-(G.rows-1)/2)*G.acrossStep,
-        y:G.originY+x*G.depthStep+Math.abs(y-(G.rows-1)/2)*G.tileH*.16-e*ELEV_H
-      };
-    }
+  function map(){
+    const s=stage();
+    if(!s)return null;
+    return window.MapDatabase?.createMap?.(s.mapId)||null;
+  }
+  function domCells(){return [...source.querySelectorAll(":scope > .tile")];}
+  function characterByName(name){
+    return Object.values(window.CHARACTERS||{}).find(c=>c?.name===name)||null;
+  }
+  function parseUnit(cell,index,cols){
+    const el=cell.querySelector(".unit");
+    if(!el)return null;
+    const x=index%cols,y=Math.floor(index/cols);
+    const text=(el.textContent||"").trim().replace(/\s+/g," ");
+    const hpMatch=text.match(/(\d+)\s*$/);
+    const hp=hpMatch?Number(hpMatch[1]):0;
+    const name=text.replace(/\d+\s*$/,"").trim();
+    const character=characterByName(name);
     return {
-      x:G.originX+(x-y)*G.tileW/2,
-      y:G.originY+(x+y)*G.tileH/2-e*ELEV_H
+      x,y,name,hp,
+      maxHp:Number(character?.combat?.hp||hp||1),
+      team:el.classList.contains("player")?"PLAYER":"ENEMY",
+      selected:cell.classList.contains("selected"),
+      finished:el.classList.contains("finished"),
+      visualId:character?.visualId||null,
+      character
     };
   }
-  function diamond(g,x,y,w,h){
-    g.beginPath();g.moveTo(x,y-h/2);g.lineTo(x+w/2,y);g.lineTo(x,y+h/2);g.lineTo(x-w/2,y);g.closePath();
+  function effectsAt(cell){
+    const icon=cell.querySelector(".icon")?.textContent||"";
+    const effects=[];
+    if(icon.includes("🔥"))effects.push("BURNING");
+    if(icon.includes("♨"))effects.push("STEAM");
+    if(cell.querySelector(".trap-marker"))effects.push("TRAP");
+    return effects;
   }
-  function neighborElevation(x,y){
-    const {cols,rows}=dims();
-    if(x<0||y<0||x>=cols||y>=rows)return 0;
-    return elevation(x,y,cells()[x*rows+y]||null);
-  }
-  function drawCliff(scene,x,y,e,G,depth){
-    if(e<=0)return;
-    const p=project(x,y,e,G),base=project(x,y,0,G);
-    const g=scene.add.graphics().setDepth(depth-2);
-
-    /* Only exposed height differences get a wall. Adjacent equal-height tiles
-       stay connected instead of each becoming a separate brown box. */
-    const nextDepth=G.p?neighborElevation(x+1,y):neighborElevation(x,y+1);
-    const nextAcross=G.p?neighborElevation(x,y+1):neighborElevation(x+1,y);
-    const dropDepth=Math.max(0,e-nextDepth);
-    const dropAcross=Math.max(0,e-nextAcross);
-
-    if(dropDepth>0){
-      const h=dropDepth*ELEV_H;
-      g.fillStyle(0x51472f,.98);
-      g.beginPath();
-      g.moveTo(p.x-G.tileW/2,p.y);g.lineTo(p.x,p.y+G.tileH/2);
-      g.lineTo(p.x,p.y+G.tileH/2+h);g.lineTo(p.x-G.tileW/2,p.y+h);
-      g.closePath();g.fillPath();
-    }
-    if(dropAcross>0){
-      const h=dropAcross*ELEV_H;
-      g.fillStyle(0x625538,.98);
-      g.beginPath();
-      g.moveTo(p.x+G.tileW/2,p.y);g.lineTo(p.x,p.y+G.tileH/2);
-      g.lineTo(p.x,p.y+G.tileH/2+h);g.lineTo(p.x+G.tileW/2,p.y+h);
-      g.closePath();g.fillPath();
-    }
-  }
-  function outline(scene,p,G,color,depth,scale=.9){
-    const g=scene.add.graphics().setDepth(depth);
-    g.lineStyle(4,color,1);diamond(g,p.x,p.y,G.tileW*scale,G.tileH*scale);g.strokePath();
-  }
-  function unitLabel(dom){
-    const raw=(dom?.textContent||"").trim().replace(/\s+/g," ");
-    const hp=(raw.match(/(\d+)\s*$/)||[])[1]||"";
-    return {name:raw.replace(/\d+\s*$/,"").trim()||"?",hp};
-  }
-  function drawUnit(scene,cell,p,G,depth){
-    const dom=cell.querySelector(".unit");if(!dom)return;
-    const player=dom.classList.contains("player"),finished=dom.classList.contains("finished"),d=unitLabel(dom);
-    const scale=G.tileW/100;
-    const c=scene.add.container(p.x,p.y-35*scale).setDepth(depth+20);
-    c.add(scene.add.ellipse(0,34*scale,52*scale,15*scale,0x000000,.38));
-    c.add(scene.add.rectangle(0,0,56*scale,70*scale,player?0x2d67a7:0xa74444,.98)
-      .setStrokeStyle(2.5,cell.classList.contains("selected")?0xffffff:0xd8e0e8).setAlpha(finished?.48:1));
-    c.add(scene.add.text(0,-9*scale,d.name,{fontFamily:"system-ui,sans-serif",fontSize:`${Math.max(9,12*scale)}px`,
-      fontStyle:"bold",color:"#fff",stroke:"#071018",strokeThickness:3,align:"center",wordWrap:{width:52*scale}}).setOrigin(.5));
-    c.add(scene.add.text(0,17*scale,"HP "+d.hp,{fontFamily:"system-ui,sans-serif",fontSize:`${Math.max(8,10*scale)}px`,
-      color:"#fff",stroke:"#071018",strokeThickness:3}).setOrigin(.5));
-  }
-  function drawDetail(scene,cell,p,G,depth){
-    const s=G.tileW/100;
-    if(cell.classList.contains("forest"))scene.add.text(p.x,p.y-19*s,"🌲",{fontSize:`${23*s}px`}).setOrigin(.5,1).setDepth(depth+8);
-    else if(cell.classList.contains("water"))scene.add.text(p.x,p.y,"≈",{fontSize:`${21*s}px`,color:"#b9ecff"}).setOrigin(.5).setDepth(depth+4);
-    else if(cell.classList.contains("wall")){
-      scene.add.rectangle(p.x,p.y-20*s,40*s,40*s,0x747b85).setStrokeStyle(2,0xaab0b8).setDepth(depth+9);
-    }
-    if(cell.querySelector(".trap-marker"))scene.add.text(p.x,p.y-5*s,"🪤",{fontSize:`${20*s}px`}).setOrigin(.5).setDepth(depth+10);
-  }
-  function visible(){return battleScreen.classList.contains("active")&&host.clientWidth>10&&host.clientHeight>10;}
-
-  function draw(scene,reset=false){
-    if(!visible())return;
-    const G=geometry(),list=cells(),cam=scene.cameras.main;
-    scene.children.removeAll();
-    cam.setBounds(0,0,G.worldW,G.worldH);
-
-    list.forEach((cell,i)=>{
-      const x=Math.floor(i/G.rows),y=i%G.rows,e=elevation(x,y,cell);
-      const p=project(x,y,e,G),depth=100+x*30+y;
-      drawCliff(scene,x,y,e,G,depth);
-      const g=scene.add.graphics().setDepth(depth);
-      g.fillStyle(terrainColor(cell),1);diamond(g,p.x,p.y,G.tileW,G.tileH);g.fillPath();
-      g.lineStyle(2,0x8d99a2,.78);diamond(g,p.x,p.y,G.tileW,G.tileH);g.strokePath();
-      if(e>0)scene.add.text(p.x+G.tileW*.31,p.y-G.tileH*.17,"H"+e,
-        {fontSize:"10px",fontStyle:"bold",color:"#fff0ad",stroke:"#17140d",strokeThickness:3}).setOrigin(.5).setDepth(depth+5);
-      if(cell.classList.contains("reachable"))outline(scene,p,G,0x4da6ff,depth+6);
-      if(cell.classList.contains("attackable"))outline(scene,p,G,0xff5e5e,depth+6);
-      if(cell.classList.contains("deployable"))outline(scene,p,G,0x70e38b,depth+6);
-      if(cell.classList.contains("tile-inspected"))outline(scene,p,G,0xffd166,depth+7,.76);
-      drawDetail(scene,cell,p,G,depth);
-      drawUnit(scene,cell,p,G,depth);
+  function snapshot(){
+    const m=map(),s=stage();
+    if(!m||!s)return null;
+    const cells=domCells();
+    const tiles=m.tiles.map((tile,index)=>{
+      const cell=cells[index]||null;
+      return {
+        ...tile,
+        reachable:!!cell?.classList.contains("reachable"),
+        attackable:!!cell?.classList.contains("attackable"),
+        deployable:!!cell?.classList.contains("deployable"),
+        inspected:!!cell?.classList.contains("tile-inspected"),
+        effects:cell?effectsAt(cell):[]
+      };
     });
+    const units=cells.map((cell,index)=>parseUnit(cell,index,m.width)).filter(Boolean);
+    return {
+      stage:s,map:{...m,tiles},units,
+      selectedUnit:units.find(u=>u.selected)||null,
+      phase:window.CardTacticsRuntime?.getPhase?.()||null
+    };
+  }
+  function clickTile(x,y){
+    const m=map();if(!m)return;
+    const index=y*m.width+x;
+    domCells()[index]?.click();
+  }
+  return {snapshot,clickTile};
+})();
 
-    if(reset||!cam.__ctReady){
-      if(G.p){
-        /* Width always fits. Long maps intentionally extend vertically. */
-        const contentWidth=Math.max(1,(G.rows-1)*G.acrossStep+G.tileW);
-        const fit=(host.clientWidth-PAD_X*2)/contentWidth;
-        cam.setZoom(Phaser.Math.Clamp(fit,.72,1.25));
-        const playerFront=project(0,(G.rows-1)/2,0,G);
-        const visibleWorldH=host.clientHeight/cam.zoom;
-        cam.centerOn(G.worldW/2,Math.max(visibleWorldH/2,playerFront.y+visibleWorldH*.20));
-      }else{
-        const fit=Math.min(host.clientWidth/G.worldW,host.clientHeight/G.worldH);
-        cam.setZoom(Phaser.Math.Clamp(fit*.98,.62,1.15));
-        cam.centerOn(G.worldW/2,G.worldH/2);
-      }
-      cam.__ctReady=true;
-    }
+/* ---------- Pure projection ---------- */
+const IsoProjection=(()=>{
+  function displayGrid(x,y,map){
+    // Rotate presentation so stage x=0 (player side) is visually at the bottom.
+    // Logical coordinates are never changed.
+    return {u:y,v:(map.width-1)-x};
   }
-  function nearest(wx,wy){
-    const G=geometry();let best=null,score=Infinity;
-    cells().forEach((cell,i)=>{
-      const x=Math.floor(i/G.rows),y=i%G.rows,e=elevation(x,y,cell),p=project(x,y,e,G);
-      const d=Math.abs((wx-p.x)/(G.tileW/2))+Math.abs((wy-p.y)/(G.tileH/2));
-      if(d<score){score=d;best=cell;}
+  function point(x,y,elevation,map){
+    const {u,v}=displayGrid(x,y,map);
+    return {
+      x:(u-v)*CONFIG.tileWidth/2,
+      y:(u+v)*CONFIG.tileHeight/2-Number(elevation||0)*CONFIG.elevationHeight
+    };
+  }
+  function basePoint(x,y,map){return point(x,y,0,map);}
+  function tileCorners(p){
+    const hw=CONFIG.tileWidth/2,hh=CONFIG.tileHeight/2;
+    return [
+      {x:p.x,y:p.y-hh},{x:p.x+hw,y:p.y},
+      {x:p.x,y:p.y+hh},{x:p.x-hw,y:p.y}
+    ];
+  }
+  function bounds(snapshot){
+    let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+    snapshot.map.tiles.forEach(t=>{
+      const p=point(t.x,t.y,t.elevation,snapshot.map);
+      tileCorners(p).forEach(c=>{
+        minX=Math.min(minX,c.x);maxX=Math.max(maxX,c.x);
+        minY=Math.min(minY,c.y);maxY=Math.max(maxY,c.y);
+      });
+      minY=Math.min(minY,p.y-CONFIG.unitLift-72);
     });
-    return score<=1.08?best:null;
+    return {minX,maxX,minY,maxY,width:maxX-minX,height:maxY-minY};
   }
+  return {point,basePoint,tileCorners,bounds};
+})();
+
+/* ---------- HUD ---------- */
+const BattleHUD=(()=>{
+  let el=null;
   function ensure(){
-    if(game||!visible())return;
-    if(!window.Phaser){host.innerHTML='<div class="phaser-error">戰場載入失敗：Phaser 未載入。</div>';return;}
-    game=new Phaser.Game({type:Phaser.AUTO,parent:"phaserBattlefield",width:host.clientWidth,height:host.clientHeight,
-      backgroundColor:"#111820",render:{antialias:true,pixelArt:false,roundPixels:true},
-      scale:{mode:Phaser.Scale.NONE},scene:{create(){
-        sceneRef=this;this.input.addPointer(2);draw(this,true);
-        this.input.on("pointerdown",p=>{
-          if(this.input.pointer1.isDown&&this.input.pointer2.isDown){
-            pinch={d:Phaser.Math.Distance.Between(this.input.pointer1.x,this.input.pointer1.y,this.input.pointer2.x,this.input.pointer2.y),z:this.cameras.main.zoom};drag=null;return;
-          }
-          drag={x:p.x,y:p.y,sx:this.cameras.main.scrollX,sy:this.cameras.main.scrollY,moved:false};
-        });
-        this.input.on("pointermove",p=>{
-          if(this.input.pointer1.isDown&&this.input.pointer2.isDown){
-            const d=Phaser.Math.Distance.Between(this.input.pointer1.x,this.input.pointer1.y,this.input.pointer2.x,this.input.pointer2.y);
-            if(pinch?.d)this.cameras.main.setZoom(Phaser.Math.Clamp(pinch.z*d/pinch.d,.62,1.55));
-            return;
-          }
-          if(!p.isDown||!drag)return;
-          const dx=p.x-drag.x,dy=p.y-drag.y;if(Math.abs(dx)+Math.abs(dy)>7)drag.moved=true;
-          const G=geometry(),z=this.cameras.main.zoom;
-          this.cameras.main.scrollX=drag.sx-dx/z*(G.p?.18:1);
-          this.cameras.main.scrollY=drag.sy-dy/z;
-        });
-        this.input.on("pointerup",p=>{
-          if(drag&&!drag.moved){const w=p.positionToCamera(this.cameras.main);nearest(w.x,w.y)?.click();}
-          drag=null;if(!(this.input.pointer1.isDown&&this.input.pointer2.isDown))pinch=null;
-        });
-        this.input.on("wheel",(_p,_g,_dx,dy)=>{const c=this.cameras.main;c.setZoom(Phaser.Math.Clamp(c.zoom*(dy>0?.9:1.1),.62,1.55));});
-      }}});
+    if(el)return el;
+    el=document.createElement("div");
+    el.id="battleUnitHud";
+    el.className="battle-unit-hud";
+    el.innerHTML=`<div class="battle-unit-portrait"><span>?</span><img alt=""></div>
+      <div class="battle-unit-summary"><div class="battle-unit-name"></div>
+      <div class="battle-unit-hp"><i></i></div><div class="battle-unit-hp-text"></div>
+      <div class="battle-unit-status"></div></div>`;
+    battleScreen.querySelector("main")?.appendChild(el);
+    return el;
   }
-  function queue(reset=false){
-    if(queued)return;queued=true;
-    requestAnimationFrame(()=>{queued=false;ensure();if(sceneRef&&visible()){game.scale.resize(host.clientWidth,host.clientHeight);draw(sceneRef,reset);}});
+  function portrait(unit){
+    if(!unit?.visualId)return null;
+    return window.VisualDatabase?.asset?.("characters",unit.visualId,"portrait")||null;
   }
-  new MutationObserver(()=>queue()).observe(source,{childList:true,subtree:true,attributes:true,characterData:true});
-  new MutationObserver(()=>queue(true)).observe(battleScreen,{attributes:true,attributeFilter:["class"]});
-  if(window.ResizeObserver)new ResizeObserver(()=>{
-    const o=portrait();const changed=lastOrientation!==null&&o!==lastOrientation;lastOrientation=o;queue(changed);
-  }).observe(host);
-  lastOrientation=portrait();
-  window.addEventListener("cardtactics:state",()=>queue());
-  window.addEventListener("resize",()=>queue(true));
-  queue(true);
+  function render(snapshot){
+    const root=ensure(),u=snapshot?.selectedUnit;
+    root.classList.toggle("visible",!!u);
+    if(!u)return;
+    root.querySelector(".battle-unit-name").textContent=u.name;
+    root.querySelector(".battle-unit-hp-text").textContent=`HP ${u.hp}/${u.maxHp}`;
+    root.querySelector(".battle-unit-hp i").style.width=`${Math.max(0,Math.min(100,u.hp/u.maxHp*100))}%`;
+    const statuses=[];
+    if(u.finished)statuses.push("已完成行動");
+    root.querySelector(".battle-unit-status").textContent=statuses.length?statuses.join(" · "):"正常";
+    const img=root.querySelector("img"),fallback=root.querySelector(".battle-unit-portrait span"),src=portrait(u);
+    if(src){
+      img.src=src;img.style.display="block";fallback.style.display="none";
+      img.onerror=()=>{img.style.display="none";fallback.style.display="grid";};
+    }else{
+      img.removeAttribute("src");img.style.display="none";fallback.style.display="grid";
+      fallback.textContent=(u.name||"?").slice(0,1);
+    }
+  }
+  return {render};
+})();
+
+/* ---------- Renderer ---------- */
+function diamond(g,p,fill,line=COLORS.grid){
+  const hw=CONFIG.tileWidth/2,hh=CONFIG.tileHeight/2;
+  g.fillStyle(fill,1);
+  g.beginPath();g.moveTo(p.x,p.y-hh);g.lineTo(p.x+hw,p.y);g.lineTo(p.x,p.y+hh);g.lineTo(p.x-hw,p.y);g.closePath();g.fillPath();
+  g.lineStyle(2,line,.78);g.strokePath();
+}
+function terrainColor(type){return COLORS[type]??COLORS.PLAIN;}
+function tileAt(snapshot,x,y){return snapshot.map.tiles.find(t=>t.x===x&&t.y===y)||null;}
+function elevationAt(snapshot,x,y){
+  const t=tileAt(snapshot,x,y);return t?Number(t.elevation||0):0;
+}
+function drawExposedCliffs(scene,snapshot,tile,p,depth){
+  const e=Number(tile.elevation||0);if(e<=0)return;
+  // In display space the two visible lower faces correspond to logical -x and +y.
+  const neighbors=[
+    {e:elevationAt(snapshot,tile.x-1,tile.y),side:"right"},
+    {e:elevationAt(snapshot,tile.x,tile.y+1),side:"left"}
+  ];
+  neighbors.forEach(n=>{
+    const drop=Math.max(0,e-n.e);if(!drop)return;
+    const h=drop*CONFIG.elevationHeight,hw=CONFIG.tileWidth/2,hh=CONFIG.tileHeight/2;
+    const g=scene.add.graphics().setDepth(depth-1);
+    g.fillStyle(n.side==="left"?COLORS.cliffA:COLORS.cliffB,.98);
+    if(n.side==="left"){
+      g.beginPath();g.moveTo(p.x-hw,p.y);g.lineTo(p.x,p.y+hh);g.lineTo(p.x,p.y+hh+h);g.lineTo(p.x-hw,p.y+h);g.closePath();
+    }else{
+      g.beginPath();g.moveTo(p.x+hw,p.y);g.lineTo(p.x,p.y+hh);g.lineTo(p.x,p.y+hh+h);g.lineTo(p.x+hw,p.y+h);g.closePath();
+    }
+    g.fillPath();
+  });
+}
+function outline(scene,p,color,depth,scale=.88){
+  const g=scene.add.graphics().setDepth(depth),hw=CONFIG.tileWidth/2*scale,hh=CONFIG.tileHeight/2*scale;
+  g.lineStyle(4,color,1);g.beginPath();g.moveTo(p.x,p.y-hh);g.lineTo(p.x+hw,p.y);g.lineTo(p.x,p.y+hh);g.lineTo(p.x-hw,p.y);g.closePath();g.strokePath();
+}
+function drawEnvironment(scene,snapshot,tile,p,depth){
+  if(tile.terrain==="FOREST")scene.add.text(p.x,p.y-18,"🌲",{fontSize:"25px"}).setOrigin(.5,1).setDepth(depth+6);
+  if(tile.terrain==="WATER")scene.add.text(p.x,p.y,"≈",{fontSize:"23px",color:"#b9ecff"}).setOrigin(.5).setDepth(depth+3);
+  const object=(snapshot.map.objects||[]).find(o=>!o.destroyed&&o.x===tile.x&&o.y===tile.y);
+  if(object){
+    const label=object.type==="ROCK"?"◆":"■";
+    scene.add.text(p.x,p.y-16,label,{fontSize:"28px",color:"#a7adb5",stroke:"#34383d",strokeThickness:4}).setOrigin(.5).setDepth(depth+8);
+  }else if(tile.terrain==="WALL"){
+    scene.add.rectangle(p.x,p.y-22,42,44,0x747b85).setStrokeStyle(2,0xaab0b8).setDepth(depth+8);
+  }
+  if(tile.effects.includes("BURNING"))scene.add.text(p.x-14,p.y-10,"🔥",{fontSize:"18px"}).setOrigin(.5).setDepth(depth+12);
+  if(tile.effects.includes("STEAM"))scene.add.text(p.x+13,p.y-9,"♨",{fontSize:"17px"}).setOrigin(.5).setDepth(depth+12);
+  if(tile.effects.includes("TRAP"))scene.add.text(p.x,p.y-5,"🪤",{fontSize:"20px"}).setOrigin(.5).setDepth(depth+12);
+}
+function drawUnit(scene,unit,p,depth){
+  const player=unit.team==="PLAYER",alpha=unit.finished?.5:1;
+  const c=scene.add.container(p.x,p.y-CONFIG.unitLift).setDepth(depth+20);
+  c.add(scene.add.ellipse(0,38,55,16,0x000000,.38));
+  c.add(scene.add.rectangle(0,0,58,72,player?0x2d67a7:0xa74444,.98).setStrokeStyle(3,unit.selected?0xffffff:0xd8e0e8).setAlpha(alpha));
+  c.add(scene.add.text(0,-9,unit.name,{fontFamily:"system-ui,sans-serif",fontSize:"11px",fontStyle:"bold",color:"#fff",stroke:"#071018",strokeThickness:3,align:"center",wordWrap:{width:52}}).setOrigin(.5));
+  c.add(scene.add.text(0,18,`HP ${unit.hp}`,{fontFamily:"system-ui,sans-serif",fontSize:"10px",color:"#fff",stroke:"#071018",strokeThickness:3}).setOrigin(.5));
+}
+function normalized(snapshot){
+  const B=IsoProjection.bounds(snapshot),pad=CONFIG.worldPadding;
+  return {B,offsetX:pad-B.minX,offsetY:pad-B.minY,worldW:B.width+pad*2,worldH:B.height+pad*2};
+}
+function worldPoint(snapshot,tile,N){
+  const p=IsoProjection.point(tile.x,tile.y,tile.elevation,snapshot.map);
+  return {x:p.x+N.offsetX,y:p.y+N.offsetY};
+}
+function renderScene(scene,{resetCamera=false}={}){
+  const snapshot=BattleStateAdapter.snapshot();if(!snapshot)return;
+  BattleHUD.render(snapshot);
+  const N=normalized(snapshot),cam=scene.cameras.main;
+  scene.children.removeAll();
+  cam.setBounds(0,0,N.worldW,N.worldH);
+
+  snapshot.map.tiles.forEach(tile=>{
+    const p=worldPoint(snapshot,tile,N);
+    const display=IsoProjection.point(tile.x,tile.y,0,snapshot.map);
+    const depth=100+display.y+Number(tile.elevation||0)*CONFIG.elevationHeight;
+    drawExposedCliffs(scene,snapshot,tile,p,depth);
+    const g=scene.add.graphics().setDepth(depth);
+    diamond(g,p,terrainColor(tile.terrain));
+    if(tile.elevation>0)scene.add.text(p.x+31,p.y-13,`H${tile.elevation}`,{fontSize:"10px",fontStyle:"bold",color:"#fff0ad",stroke:"#17140d",strokeThickness:3}).setOrigin(.5).setDepth(depth+4);
+    if(tile.reachable)outline(scene,p,0x4da6ff,depth+10);
+    if(tile.attackable)outline(scene,p,0xff5e5e,depth+10);
+    if(tile.deployable)outline(scene,p,0x70e38b,depth+10);
+    if(tile.inspected)outline(scene,p,0xffd166,depth+11,.74);
+    drawEnvironment(scene,snapshot,tile,p,depth);
+  });
+  snapshot.units.forEach(unit=>{
+    const tile=tileAt(snapshot,unit.x,unit.y);if(!tile)return;
+    const p=worldPoint(snapshot,tile,N);
+    const d=IsoProjection.point(unit.x,unit.y,0,snapshot.map);
+    drawUnit(scene,unit,p,200+d.y+Number(tile.elevation||0)*CONFIG.elevationHeight);
+  });
+
+  if(resetCamera||!cam.__ctReady){
+    const contentWidth=N.B.width;
+    const widthZoom=(host.clientWidth-CONFIG.viewportPadding*2)/Math.max(1,contentWidth);
+    const zoom=Phaser.Math.Clamp(widthZoom,CONFIG.minZoom,1.18);
+    cam.setZoom(zoom);
+    const visibleH=host.clientHeight/zoom;
+    const playerTiles=snapshot.map.tiles.filter(t=>t.x===0);
+    const playerY=playerTiles.length
+      ?Math.max(...playerTiles.map(t=>worldPoint(snapshot,t,N).y))
+      :N.worldH/2;
+    const centerY=Math.max(visibleH/2,Math.min(N.worldH-visibleH/2,playerY-visibleH*.28));
+    cam.centerOn(N.worldW/2,centerY);
+    cam.__ctReady=true;
+  }
+}
+function nearestTile(wx,wy){
+  const snapshot=BattleStateAdapter.snapshot();if(!snapshot)return null;
+  const N=normalized(snapshot);let best=null,bestScore=Infinity;
+  snapshot.map.tiles.forEach(tile=>{
+    const p=worldPoint(snapshot,tile,N);
+    const dx=Math.abs((wx-p.x)/(CONFIG.tileWidth/2));
+    const dy=Math.abs((wy-p.y)/(CONFIG.tileHeight/2));
+    const score=dx+dy;
+    if(score<bestScore){bestScore=score;best=tile;}
+  });
+  return bestScore<=1.02?best:null;
+}
+function visible(){return battleScreen.classList.contains("active")&&host.clientWidth>10&&host.clientHeight>10;}
+function ensureGame(){
+  if(game||!visible())return;
+  if(!window.Phaser){host.innerHTML='<div class="phaser-error">戰場載入失敗：Phaser 未載入。</div>';return;}
+  game=new Phaser.Game({
+    type:Phaser.AUTO,parent:"phaserBattlefield",width:host.clientWidth,height:host.clientHeight,
+    backgroundColor:"#111820",render:{antialias:true,pixelArt:false,roundPixels:true},
+    scale:{mode:Phaser.Scale.NONE},
+    scene:{create(){
+      sceneRef=this;this.input.addPointer(2);renderScene(this,{resetCamera:true});
+      this.input.on("pointerdown",p=>{
+        if(this.input.pointer1.isDown&&this.input.pointer2.isDown){
+          pinch={distance:Phaser.Math.Distance.Between(this.input.pointer1.x,this.input.pointer1.y,this.input.pointer2.x,this.input.pointer2.y),zoom:this.cameras.main.zoom};
+          drag=null;return;
+        }
+        drag={x:p.x,y:p.y,scrollX:this.cameras.main.scrollX,scrollY:this.cameras.main.scrollY,moved:false};
+      });
+      this.input.on("pointermove",p=>{
+        if(this.input.pointer1.isDown&&this.input.pointer2.isDown){
+          const d=Phaser.Math.Distance.Between(this.input.pointer1.x,this.input.pointer1.y,this.input.pointer2.x,this.input.pointer2.y);
+          if(pinch?.distance)this.cameras.main.setZoom(Phaser.Math.Clamp(pinch.zoom*d/pinch.distance,CONFIG.minZoom,CONFIG.maxZoom));
+          return;
+        }
+        if(!p.isDown||!drag)return;
+        const dx=p.x-drag.x,dy=p.y-drag.y;if(Math.abs(dx)+Math.abs(dy)>7)drag.moved=true;
+        const z=this.cameras.main.zoom;
+        // Portrait interaction is intentionally vertical-first. Horizontal remains available only as a small correction.
+        const xFactor=host.clientHeight>=host.clientWidth?.18:1;
+        this.cameras.main.scrollX=drag.scrollX-dx/z*xFactor;
+        this.cameras.main.scrollY=drag.scrollY-dy/z;
+      });
+      this.input.on("pointerup",p=>{
+        if(drag&&!drag.moved){
+          const w=p.positionToCamera(this.cameras.main),tile=nearestTile(w.x,w.y);
+          if(tile)BattleStateAdapter.clickTile(tile.x,tile.y);
+        }
+        drag=null;if(!(this.input.pointer1.isDown&&this.input.pointer2.isDown))pinch=null;
+      });
+      this.input.on("wheel",(_p,_go,_dx,dy)=>{
+        const c=this.cameras.main;c.setZoom(Phaser.Math.Clamp(c.zoom*(dy>0?.9:1.1),CONFIG.minZoom,CONFIG.maxZoom));
+      });
+    }}
+  });
+}
+function queue(resetCamera=false){
+  if(drawQueued)return;drawQueued=true;
+  requestAnimationFrame(()=>{
+    drawQueued=false;ensureGame();
+    if(sceneRef&&visible()){
+      game.scale.resize(host.clientWidth,host.clientHeight);
+      renderScene(sceneRef,{resetCamera});
+    }
+  });
+}
+new MutationObserver(()=>queue(false)).observe(source,{childList:true,subtree:true,attributes:true,characterData:true});
+new MutationObserver(()=>queue(true)).observe(battleScreen,{attributes:true,attributeFilter:["class"]});
+if(window.ResizeObserver)new ResizeObserver(()=>{
+  const key=`${host.clientWidth}x${host.clientHeight}`;
+  const changed=key!==lastViewportKey;lastViewportKey=key;queue(changed);
+}).observe(host);
+window.addEventListener("cardtactics:state",()=>queue(false));
+window.addEventListener("resize",()=>queue(true));
+queue(true);
 })();
