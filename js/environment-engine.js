@@ -12,7 +12,21 @@ window.EnvironmentEngine=(()=>{
   function environmentAt(map,x,y){const object=objectAt(map,x,y);if(object?.environment)return object.environment;const tile=tileAt(map,x,y);return TERRAINS[tile?.terrain]?.environment||ELEMENT.NONE;}
   function create({timeOfDay="DAY",weather="CLEAR"}={}){return{timeOfDay,weather:weather||WEATHER.CLEAR,effects:new Map(),destroyedObjects:new Set()};}
   function setTimeOfDay(state,timeOfDay){state.timeOfDay=timeOfDay==="NIGHT"?"NIGHT":"DAY";}
-  function setWeather(state,weather){if(state)state.weather=WEATHER[weather]?weather:WEATHER.CLEAR;}
+  function setWeather(state,weather){
+    if(!state)return[];
+    state.weather=WEATHER[weather]?weather:WEATHER.CLEAR;
+    const events=[];
+    if(isRain(state)){
+      for(const [k,list] of [...state.effects.entries()]){
+        const burning=list.filter(e=>e.type===EFFECT.BURNING);
+        if(!burning.length)continue;
+        const [x,y]=k.split(",").map(Number);
+        removeEffect(state,x,y,EFFECT.BURNING);
+        events.push({type:"RAIN_EXTINGUISHED_FIRE",x,y});
+      }
+    }
+    return events;
+  }
   function isRain(state){return state?.weather===WEATHER.RAIN||state?.weather===WEATHER.HEAVY_RAIN;}
   function hasMetalEquipment(unit){return EquipmentDatabase.equippedItems(unit?.character).some(item=>item?.material==="METAL"||item?.conductive===true||METAL_EQUIPMENT_IDS.has(item?.id));}
   function lightningRisk(map,unit){if(!unit?.alive)return{weight:0,reasons:[]};const rules=WEATHER_RULES.HEAVY_RAIN;let weight=1;const reasons=[];if(hasMetalEquipment(unit)){weight*=rules.metalWeight;reasons.push("METAL");}const material=environmentAt(map,unit.x,unit.y);if(material===ELEMENT.WATER){weight*=rules.waterWeight;reasons.push("WATER");}if(material===ELEMENT.GRASS){weight*=rules.treeWeight;reasons.push("TREE");}return{weight,reasons};}
@@ -25,10 +39,28 @@ window.EnvironmentEngine=(()=>{
   function isConductive(map,state,x,y){return isRain(state)||environmentAt(map,x,y)===ELEMENT.WATER;}
   function apply({map,state,x,y,forces=[]}){
     const forceSet=new Set(forces),environment=environmentAt(map,x,y),events=[];
-    const burningBefore=isBurning(state,x,y);
+    const raining=isRain(state),burningBefore=isBurning(state,x,y);
     if(forceSet.has(FORCE.WIND)&&burningBefore){addEffect(state,x,y,{type:EFFECT.FIRE_TORNADO,duration:2,lightRadius:3,damage:HAZARD.FIRE_TORNADO_DAMAGE,damageType:"FIRE",visionBlock:false});events.push({type:"FIRE_TORNADO_CREATED",x,y,effect:EFFECT.FIRE_TORNADO});}
-    if(environment===ELEMENT.GRASS&&(forceSet.has(FORCE.FIRE)||forceSet.has(FORCE.HEAVY_FIRE))){addEffect(state,x,y,{type:EFFECT.BURNING,duration:3,lightRadius:2,damage:HAZARD.BURNING_DAMAGE,damageType:"FIRE",fireIntensity:forceSet.has(FORCE.HEAVY_FIRE)?"HEAVY":"NORMAL"});events.push({type:"IGNITE",x,y,effect:EFFECT.BURNING});}
-    if(environment===ELEMENT.WATER){if(forceSet.has(FORCE.HEAVY_FIRE)){removeEffect(state,x,y,EFFECT.BURNING);addEffect(state,x,y,{type:EFFECT.STEAM,duration:2,visionBlock:true});events.push({type:"STEAM_CREATED",x,y,effect:EFFECT.STEAM});}else if(forceSet.has(FORCE.FIRE)){removeEffect(state,x,y,EFFECT.BURNING);events.push({type:"FIRE_EXTINGUISHED",x,y});}}
+
+    if(raining&&forceSet.has(FORCE.FIRE)){
+      if(effectAt(state,x,y).some(e=>e.type===EFFECT.BURNING)){removeEffect(state,x,y,EFFECT.BURNING);events.push({type:"FIRE_EXTINGUISHED",x,y});}
+      events.push({type:"RAIN_SUPPRESSED_FIRE",x,y});
+    }else if(!raining&&environment===ELEMENT.GRASS&&forceSet.has(FORCE.FIRE)){
+      addEffect(state,x,y,{type:EFFECT.BURNING,duration:3,lightRadius:2,damage:HAZARD.BURNING_DAMAGE,damageType:"FIRE",fireIntensity:"NORMAL"});events.push({type:"IGNITE",x,y,effect:EFFECT.BURNING});
+    }
+
+    if(raining&&(forceSet.has(FORCE.HEAVY_FIRE)||forceSet.has(FORCE.EXPLOSION))){
+      removeEffect(state,x,y,EFFECT.BURNING);
+      addEffect(state,x,y,{type:EFFECT.STEAM,duration:2,visionBlock:true});
+      events.push({type:"STEAM_CREATED",x,y,effect:EFFECT.STEAM,reason:forceSet.has(FORCE.HEAVY_FIRE)?"HEAVY_FIRE_IN_RAIN":"EXPLOSION_IN_RAIN"});
+    }else if(!raining&&environment===ELEMENT.GRASS&&forceSet.has(FORCE.HEAVY_FIRE)){
+      addEffect(state,x,y,{type:EFFECT.BURNING,duration:3,lightRadius:2,damage:HAZARD.BURNING_DAMAGE,damageType:"FIRE",fireIntensity:"HEAVY"});events.push({type:"IGNITE",x,y,effect:EFFECT.BURNING});
+    }
+
+    if(environment===ELEMENT.WATER){
+      if(forceSet.has(FORCE.HEAVY_FIRE)){removeEffect(state,x,y,EFFECT.BURNING);addEffect(state,x,y,{type:EFFECT.STEAM,duration:2,visionBlock:true});events.push({type:"STEAM_CREATED",x,y,effect:EFFECT.STEAM});}
+      else if(forceSet.has(FORCE.FIRE)){removeEffect(state,x,y,EFFECT.BURNING);events.push({type:"FIRE_EXTINGUISHED",x,y});}
+    }
     if(forceSet.has(FORCE.THUNDER)&&isConductive(map,state,x,y)){addEffect(state,x,y,{type:EFFECT.ELECTRIFIED,duration:1,damage:HAZARD.ELECTRIC_DAMAGE,damageType:"THUNDER"});events.push({type:"ELECTRIC_CONDUCTION",x,y,effect:EFFECT.ELECTRIFIED});}
     if(environment===ELEMENT.STONE&&forceSet.has(FORCE.EXPLOSION)){addEffect(state,x,y,{type:EFFECT.FRAGMENTS,duration:1,damageType:"PHYSICAL",radius:1});const object=objectAt(map,x,y),destroyed=destroyStoneObject(map,state,object);events.push({type:"STONE_FRAGMENT",x,y,effect:EFFECT.FRAGMENTS,destroyed,objectId:object?.id||null});}
     return events;
