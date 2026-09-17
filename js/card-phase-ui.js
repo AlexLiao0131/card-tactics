@@ -46,10 +46,17 @@
       const id=previewId;
       previewId=null;
       if(id)CardTacticsRuntime.playCard(id);
+      // playCard() changes pendingCard synchronously. Re-render immediately so
+      // targeting-mode is applied even when the runtime branch does not emit
+      // cardtactics:state until deployment/target resolution completes.
+      render();
     });
     host.querySelector("#cancelCardPreview")?.addEventListener("click",()=>{previewId=null;render();});
     host.querySelector("#endCardPhase")?.addEventListener("click",()=>CardTacticsRuntime.endCardPhase());
-    host.querySelector("#cancelCardDeploy")?.addEventListener("click",()=>CardTacticsRuntime.cancelCard());
+    host.querySelector("#cancelCardDeploy")?.addEventListener("click",()=>{
+      CardTacticsRuntime.cancelCard();
+      render();
+    });
   }
 
   window.addEventListener("cardtactics:state",render);
