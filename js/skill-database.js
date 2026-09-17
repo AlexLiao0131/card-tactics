@@ -1,17 +1,18 @@
 window.SKILLS={
-  bow_shot:{id:"bow_shot",name:"普通射擊",category:"ATTACK",weapon:"kahns_bow",power:1,range:{min:2,max:4},attackType:"INHERIT",element:"INHERIT",speed:0,target:"ENEMY",support:true,resource:{type:"UNLIMITED"},affixes:[]},
-  fire_arrow:{
-    id:"fire_arrow",name:"火焰附魔箭",category:"ATTACK",weapon:"kahns_bow",power:1,
-    range:{min:2,max:4},attackType:"INHERIT",element:"FIRE",speed:0,target:"ENEMY",
-    targetType:"SINGLE",support:true,resource:{type:"USES",max:3},affixes:[],
-    statusEffects:[{type:"BURN",chance:100}],
-    variants:[
-      {id:"SINGLE",name:"火焰箭・單體",targetType:"SINGLE",damageParts:["WEAPON","FIRE"],statusEffects:[{type:"BURN",chance:100}]},
-      {id:"MAP_AOE",name:"爆裂火焰箭",targetType:"AOE",target:"TILE",radius:1,damageParts:["FIRE"],environmentForces:["FIRE","EXPLOSION"]}
-    ]
-  },
-  black_slash:{id:"black_slash",name:"黑劍斬擊",category:"ATTACK",weapon:"black_sword",power:1,range:{min:1,max:1},attackType:"INHERIT",element:"INHERIT",speed:0,target:"ENEMY",support:false,resource:{type:"UNLIMITED"},affixes:[]},
-  fire_black_slash:{id:"fire_black_slash",name:"火焰附魔・黑劍",category:"ATTACK",weapon:"black_sword",power:1,range:{min:1,max:1},attackType:"INHERIT",element:"FIRE",speed:0,target:"ENEMY",support:false,resource:{type:"USES",max:3},affixes:[]},
+  bow_shot:{id:"bow_shot",name:"弓箭射擊",category:"ATTACK",weapon:"kahns_bow",power:1,range:{min:2,max:4},attackType:"SHOT",element:"INHERIT",speed:0,target:"ENEMY",support:true,resource:{type:"UNLIMITED"},affixes:[]},
+  black_slash:{id:"black_slash",name:"黑劍斬擊",category:"ATTACK",weapon:"black_sword",power:1,range:{min:1,max:1},attackType:"SLASH",element:"INHERIT",speed:0,target:"ENEMY",support:false,resource:{type:"UNLIMITED"},affixes:[]},
+  shadow_step:{id:"shadow_step",name:"幽影步",category:"SPECIAL",power:0,range:{min:1,max:4},target:"TILE",targetType:"AOE",shape:"W_STEP",moveToTarget:true,ignorePath:true,support:false,resource:{type:"USES",max:2},affixes:[]},
+  nether_slash:{id:"nether_slash",name:"幽冥斬擊",category:"SPECIAL",weapon:"black_sword",power:1.25,range:{min:1,max:3},attackType:"SLASH",element:"DARK",speed:5,target:"ENEMY",support:false,resource:{type:"USES",max:2},affixes:["SPACE_RIFT"]},
+  thunder_enchant:{id:"thunder_enchant",name:"雷元素附魔",category:"MAGIC",weapon:"kahns_bow",power:1,range:{min:1,max:4},attackType:"SHOT",element:"THUNDER",speed:0,target:"ENEMY",targetType:"SINGLE",support:false,resource:{type:"USES",max:3},affixes:[],variants:[
+    {id:"THUNDER_ARROW_SINGLE",name:"雷箭・單體",weapon:"kahns_bow",power:1.05,range:{min:2,max:4},attackType:"SHOT",element:"THUNDER",target:"ENEMY",targetType:"SINGLE"},
+    {id:"THUNDER_ARROW_AOE",name:"雷箭・環境傳導",weapon:"kahns_bow",power:1,range:{min:2,max:4},attackType:"SHOT",element:"THUNDER",target:"TILE",targetType:"AOE",radius:1,environmentRequirement:"CONDUCTIVE",environmentForces:["THUNDER"],aoeDamage:55},
+    {id:"THUNDER_SWORD",name:"雷劍",weapon:"black_sword",power:1.1,range:{min:1,max:1},attackType:"SLASH",element:"THUNDER",target:"ENEMY",targetType:"SINGLE"}
+  ]},
+  fire_enchant:{id:"fire_enchant",name:"火元素附魔",category:"MAGIC",weapon:"kahns_bow",power:1,range:{min:1,max:4},attackType:"SHOT",element:"FIRE",speed:0,target:"ENEMY",targetType:"SINGLE",support:false,resource:{type:"USES",max:3},affixes:[],variants:[
+    {id:"FIRE_ARROW_SINGLE",name:"火箭・單體",weapon:"kahns_bow",power:1.05,range:{min:2,max:4},attackType:"SHOT",element:"FIRE",target:"ENEMY",targetType:"SINGLE",statusEffects:[{type:"BURN",chance:100}]},
+    {id:"FIRE_ARROW_AOE",name:"火箭・爆裂",weapon:"kahns_bow",power:1,range:{min:2,max:4},attackType:"SHOT",element:"FIRE",target:"TILE",targetType:"AOE",radius:1,environmentForces:["FIRE","EXPLOSION"],aoeDamage:45},
+    {id:"FIRE_SWORD",name:"火劍",weapon:"black_sword",power:1.1,range:{min:1,max:1},attackType:"SLASH",element:"FIRE",target:"ENEMY",targetType:"SINGLE",statusEffects:[{type:"BURN",chance:100}]}
+  ]},
   slash:{id:"slash",name:"制式斬擊",category:"ATTACK",weapon:"sword",power:1,range:{min:1,max:1},attackType:"INHERIT",element:"INHERIT",speed:0,target:"ENEMY",support:false,resource:{type:"UNLIMITED"},affixes:[]},
   heavy_slash:{id:"heavy_slash",name:"重裝斬擊",category:"ATTACK",weapon:"sword",power:1,range:{min:1,max:1},attackType:"INHERIT",element:"INHERIT",speed:-5,target:"ENEMY",support:false,resource:{type:"UNLIMITED"},affixes:[]},
   claw:{id:"claw",name:"利爪攻擊",category:"ATTACK",weapon:"claw",power:1,range:{min:1,max:1},attackType:"INHERIT",element:"INHERIT",speed:5,target:"ENEMY",support:false,resource:{type:"UNLIMITED"},affixes:[]},
@@ -46,6 +47,7 @@ window.PASSIVES={
   CHAMPION_SWORDSMAN:{id:"CHAMPION_SWORDSMAN",name:"冠軍劍士",category:"PASSIVE",vsWeaponKind:"SWORD",speedBonus:20},
   HUNTER_OF_THE_EDGE:{id:"HUNTER_OF_THE_EDGE",name:"林邊的獵人",category:"PASSIVE",terrain:"FOREST",modifiers:{accuracy:10,evasion:10}},
   HERETIC:{id:"HERETIC",name:"異端",category:"PASSIVE",ignoreElementResistance:true},
+  AMBUSH:{id:"AMBUSH",name:"伏擊",category:"PASSIVE",terrain:"FOREST",weaponKind:"BOW",powerMultiplier:1.20,speedBonus:20},
   PERFECT_GENOME_5V:{id:"PERFECT_GENOME_5V",name:"純種舊人類",category:"PASSIVE"},
   NO_CHANT:{id:"NO_CHANT",name:"無詠唱",category:"PASSIVE",magicNegativeSpeedAsZero:true},
   CAPTAIN_HIGHEST_AUTHORITY:{id:"CAPTAIN_HIGHEST_AUTHORITY",name:"最高艦長權限",category:"PASSIVE",turnEndEffect:{type:"DRAW",count:1}}

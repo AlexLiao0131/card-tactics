@@ -98,19 +98,68 @@
       return true;
     }
     if(CardDatabase.isSpell(card)){
-      if(!CardPhaseEngine.commit(cardState,card))return false;
-      pushLog(`施放卡牌魔法「${card.name}」｜消耗 ${card.cost} 水晶。`,"SYSTEM");
       if(card.effect?.type==="WEATHER"){
+        if(!CardPhaseEngine.commit(cardState,card))return false;
         const weather=card.effect.weather==="RAIN"?"HEAVY_RAIN":card.effect.weather;
         if(environmentState)EnvironmentEngine.setWeather(environmentState,weather);
-        pushLog(`天候變更：${weather==="HEAVY_RAIN"?"豪大雨":weather}。`,"SYSTEM");
+        pushLog(`施放卡牌魔法「${card.name}」｜消耗 ${card.cost} 水晶。`,"SYSTEM");
+        pushLog(`天候變更：${weather==="HEAVY_RAIN"?"雷雨／豪大雨":weather==="FOG"?"迷霧":weather}。`,"SYSTEM");
+        pendingCard=null;render();window.dispatchEvent(new CustomEvent("cardtactics:state"));return true;
       }
-      pendingCard=null;
-      render();
-      window.dispatchEvent(new CustomEvent("cardtactics:state"));
-      return true;
+      if(["AREA_FIRE","AREA_PUSH","AREA_HEAL","AREA_DAMAGE"].includes(card.effect?.type)){
+        pendingCard=card;
+        pushLog(`選擇卡牌魔法「${card.name}」｜請點選戰場上的施放中心。`,"SYSTEM");
+        render();return true;
+      }
+      return false;
     }
     return false;
+  }
+
+  function spellArea(center,radius){return aoeTiles(center,Number(radius||0));}
+  function canOccupyTile(tile,unit){return !!tile&&TERRAINS[tile.terrain]?.passable!==false&&!unitAt(tile.x,tile.y);}
+  function pushUnitFrom(center,unit,distance){
+    let moved=0;
+    for(let i=0;i<Number(distance||0);i++){
+      const dx=unit.x-center.x,dy=unit.y-center.y;
+      let sx=0,sy=0;
+      if(Math.abs(dx)>=Math.abs(dy)&&dx!==0)sx=Math.sign(dx);else if(dy!==0)sy=Math.sign(dy);else break;
+      const next=map.tiles.find(t=>t.x===unit.x+sx&&t.y===unit.y+sy);
+      if(!canOccupyTile(next,unit))break;
+      unit.x=next.x;unit.y=next.y;moved++;enterTile(unit);
+    }
+    return moved;
+  }
+  function damageUnitFlat(unit,damage,sourceName){
+    if(!unit?.alive)return;
+    unit.hp=Math.max(0,unit.hp-Math.max(0,Number(damage||0)));
+    pushLog(`${sourceName} → ${unit.character.name}｜${damage} 傷害｜HP ${unit.hp}。`,"BATTLE");
+    if(unit.hp<=0&&unit.alive){unit.alive=false;handleDefeated(unit,null,{type:"CARD_SPELL",name:sourceName});}
+  }
+  function resolveSpellAt(card,center){
+    if(!card||phase!==PHASE.CARD||pendingCard!==card)return false;
+    const effect=card.effect||{},affected=spellArea(center,effect.radius||0);
+    if(!CardPhaseEngine.commit(cardState,card))return false;
+    pushLog(`施放卡牌魔法「${card.name}」｜中心 (${center.x},${center.y})｜消耗 ${card.cost} 水晶。`,"SYSTEM");
+    if(effect.type==="AREA_FIRE"){
+      affected.forEach(tile=>(EnvironmentEngine.apply({map,state:environmentState,x:tile.x,y:tile.y,forces:effect.forces||["FIRE"]})||[]).forEach(logEnvironmentEvent));
+      affected.forEach(tile=>{const u=unitAt(tile.x,tile.y);if(u)applyEnvironmentHazardToUnit(u,{reason:"遭野火波及"});});
+    }else if(effect.type==="AREA_PUSH"){
+      const centerWasBurning=EnvironmentEngine.isBurning(environmentState,center.x,center.y);
+      const interactionEvents=EnvironmentEngine.apply({map,state:environmentState,x:center.x,y:center.y,forces:effect.forces||["WIND"]})||[];
+      interactionEvents.forEach(logEnvironmentEvent);
+      const fireTornado=centerWasBurning||interactionEvents.some(e=>e.type==="FIRE_TORNADO_CREATED");
+      if(fireTornado){
+        pushLog(`🔥🌪 火焰與龍捲風結合，形成火龍捲！`,"SYSTEM");
+        affected.forEach(tile=>(EnvironmentEngine.apply({map,state:environmentState,x:tile.x,y:tile.y,forces:["HEAVY_FIRE"]})||[]).forEach(logEnvironmentEvent));
+      }
+      affected.forEach(tile=>{const u=unitAt(tile.x,tile.y);if(!u)return;damageUnitFlat(u,fireTornado?Number(effect.fireTornadoDamage||45):Number(effect.damage||20),fireTornado?"火龍捲":card.name);if(u.alive){const moved=pushUnitFrom(center,u,effect.distance||2);if(moved)pushLog(`${u.character.name} 被吹離 ${moved} 格。`,"BATTLE");}});
+    }else if(effect.type==="AREA_HEAL"){
+      affected.forEach(tile=>{const u=unitAt(tile.x,tile.y);if(!u?.alive||u.team!==TEAM.PLAYER)return;const before=u.hp;u.hp=Math.min(u.character.combat.hp,u.hp+Number(effect.heal||0));pushLog(`${card.name} → ${u.character.name}｜回復 ${u.hp-before} HP｜HP ${u.hp}。`,"BATTLE");});
+    }else if(effect.type==="AREA_DAMAGE"){
+      affected.forEach(tile=>{const u=unitAt(tile.x,tile.y);if(u)damageUnitFlat(u,effect.damage||0,card.name);(EnvironmentEngine.apply({map,state:environmentState,x:tile.x,y:tile.y,forces:effect.forces||[]})||[]).forEach(logEnvironmentEvent);});
+    }
+    pendingCard=null;checkMatchEnd();render();window.dispatchEvent(new CustomEvent("cardtactics:state"));return true;
   }
 
   function deployPendingCard(tile){
@@ -657,6 +706,18 @@
     return variant?{...skill,...variant,id:skill.id,name:variant.name||skill.name,baseSkillId:skill.id,variantId:variant.id,variants:undefined}:skill;
   }
   function skillVariants(skill){return Array.isArray(skill?.variants)?skill.variants:[];}
+  function effectiveSkill(attacker,skill){
+    let out=skill;
+    const passives=SkillDatabase.passiveList(attacker?.character?.passives);
+    const tile=TacticalEngine.tile(map,attacker.x,attacker.y);
+    const weapon=attacker?.character?.weapons?.[skill?.weapon];
+    const ambush=passives.find(p=>p.id==="AMBUSH");
+    if(ambush&&tile?.terrain===ambush.terrain&&weapon?.weaponKind===ambush.weaponKind){
+      out={...out,power:Number(out.power||0)*Number(ambush.powerMultiplier||1),speed:Number(out.speed||0)+Number(ambush.speedBonus||0),modifiers:{...(out.modifiers||{})}};
+      out.ambushActive=true;
+    }
+    return out;
+  }
   function mapTargetTiles(attacker,skill){
     const range=TacticalEngine.range(skill);
     return map.tiles.filter(tile=>{
@@ -666,6 +727,10 @@
         if(attacker.x!==tile.x&&attacker.y!==tile.y)return false;
         if(skill.moveToTarget&&unitAt(tile.x,tile.y))return false;
       }
+      if(skill.shape==="W_STEP"){
+        if(unitAt(tile.x,tile.y)||TERRAINS[tile.terrain]?.passable===false)return false;
+      }
+      if(skill.environmentRequirement==="CONDUCTIVE"&&!EnvironmentEngine.isConductive(map,environmentState,tile.x,tile.y))return false;
       return true;
     });
   }
@@ -687,10 +752,14 @@
     else if(event.type==="FIRE_EXTINGUISHED")pushLog(`(${event.x},${event.y}) 的火焰被水熄滅。`,"SYSTEM");
     else if(event.type==="STEAM_CREATED")pushLog(`大量火焰接觸水域，(${event.x},${event.y}) 產生蒸氣迷霧。`,"SYSTEM");
     else if(event.type==="STONE_FRAGMENT")pushLog(`爆炸擊中石質物件，(${event.x},${event.y}) 產生破片${event.destroyed?"並炸開道路":""}。`,"SYSTEM");
+    else if(event.type==="FIRE_TORNADO_CREATED")pushLog(`(${event.x},${event.y}) 的燃燒區被風捲起，形成火龍捲。`,"SYSTEM");
+    else if(event.type==="ELECTRIC_CONDUCTION")pushLog(`⚡ (${event.x},${event.y}) 發生雷元素傳導。`,"SYSTEM");
   }
   function executeMapSkill(attacker,center,skill){
     if(!canUseSkill(attacker,skill))return false;
     consumeSkill(attacker,skill);
+    skill=effectiveSkill(attacker,skill);
+    if(skill.ambushActive)pushLog(`${attacker.character.name}｜伏擊發動：弓擊威力與速度提升。`,"BATTLE");
     const affected=skill.shape==="LINE"?lineTiles(attacker,center):aoeTiles(center,skill.radius||0);
     if(skill.shape==="LINE"){
       affected.forEach(tile=>{
@@ -702,6 +771,9 @@
         pushLog(`${attacker.character.name} → ${occupant.character.name}｜${skill.name} ${result.damage} 傷害｜HP ${occupant.hp}。`,"BATTLE");
         if(occupant.hp<=0&&occupant.alive){occupant.alive=false;handleDefeated(occupant,attacker,skill);}
       });
+    }
+    if(skill.aoeDamage){
+      affected.forEach(tile=>{const occupant=unitAt(tile.x,tile.y);if(occupant)damageUnitFlat(occupant,skill.aoeDamage,skill.name);});
     }
     affected.forEach(tile=>{
       const events=environmentState&&skill.environmentForces
@@ -757,7 +829,8 @@
         cell.title=`${capturePoint.name}｜${capturePoint.owner}`;
       }
       if(reachable.has(tile.x+","+tile.y)) cell.classList.add("reachable");
-      if(pendingCard&&phase===PHASE.CARD&&DeploymentEngine.canDeploy({stage,map,units,owner:"PLAYER",x:tile.x,y:tile.y})) cell.classList.add("deployable");
+      if(pendingCard&&phase===PHASE.CARD&&CardDatabase.isCharacter(pendingCard)&&DeploymentEngine.canDeploy({stage,map,units,owner:"PLAYER",x:tile.x,y:tile.y})) cell.classList.add("deployable");
+      if(pendingCard&&phase===PHASE.CARD&&CardDatabase.isSpell(pendingCard)) cell.classList.add("attackable");
       if(unit&&targets.includes(unit)) cell.classList.add("attackable");
       if(mapTargets.includes(tile)) cell.classList.add("attackable");
       if(unit===selected) cell.classList.add("selected");
@@ -788,7 +861,8 @@
   function handleTileClick(tile,unit,reachable,targets){
     if(matchResult)return;
     if(phase===PHASE.CARD){
-      if(pendingCard&&!unit)deployPendingCard(tile);
+      if(pendingCard&&CardDatabase.isSpell(pendingCard)){resolveSpellAt(pendingCard,tile);return;}
+      if(pendingCard&&CardDatabase.isCharacter(pendingCard)&&!unit)deployPendingCard(tile);
       return;
     }
     if(phase!==PHASE.PLAYER) return;
@@ -824,6 +898,8 @@
 
   function prepareAttack(attacker,defender,skill){
     if(!canUseSkill(attacker,skill)) return;
+    skill=effectiveSkill(attacker,skill);
+    if(skill.ambushActive)pushLog(`${attacker.character.name}｜伏擊發動：弓擊威力與速度提升。`,"BATTLE");
 
     if(targetType(skill)!=="SINGLE"){
       executeEngagement(attacker,defender,skill,[]);
@@ -1255,7 +1331,7 @@
           render();
         });
       });
-      addActionButton("返回",()=>{selectedSkill=null;selectedSkillVariant=null;mode="attack-menu";render();});
+      addActionButton("返回",()=>{const special=selectedSkill?.category!=="ATTACK";selectedSkill=null;selectedSkillVariant=null;mode=special?"special-menu":"attack-menu";render();});
       return;
     }
 
