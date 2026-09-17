@@ -91,7 +91,13 @@ const BattleStateAdapter=(()=>{
         attackable:!!cell?.classList.contains("attackable"),
         deployable:!!cell?.classList.contains("deployable"),
         inspected:!!cell?.classList.contains("tile-inspected"),
-        effects:cell?effectsAt(cell):[]
+        effects:cell?effectsAt(cell):[],
+        deployment:(s.deploymentPoints||[]).find(point=>
+          (point.area||[]).some(pos=>pos.x===tile.x&&pos.y===tile.y)
+        )?.owner||null,
+        capturePoint:(s.deploymentPoints||[]).find(point=>
+          (point.captureTiles||[]).some(pos=>pos.x===tile.x&&pos.y===tile.y)
+        )||null
       };
     });
     const units=cells.map((cell,index)=>parseUnit(cell,index,m.width)).filter(Boolean);
@@ -148,7 +154,7 @@ const IsoProjection=(()=>{
 
 /* ---------- HUD ---------- */
 const BattleHUD=(()=>{
-  let el=null;
+  let el=null,manuallyHidden=false;
   function ensure(){
     if(el)return el;
     el=document.createElement("div");
@@ -157,8 +163,13 @@ const BattleHUD=(()=>{
     el.innerHTML=`<div class="battle-unit-portrait"><span>?</span><img alt=""></div>
       <div class="battle-unit-summary"><div class="battle-unit-name"></div>
       <div class="battle-unit-hp"><i></i></div><div class="battle-unit-hp-text"></div>
-      <div class="battle-unit-status"></div></div>`;
+      <div class="battle-unit-status"></div></div>
+      <button class="battle-unit-hud-close" type="button" aria-label="關閉角色資訊">×</button>`;
     battleScreen.querySelector("main")?.appendChild(el);
+    el.querySelector(".battle-unit-hud-close")?.addEventListener("click",()=>{
+      manuallyHidden=true;
+      el.classList.remove("visible");
+    });
     return el;
   }
   function portrait(unit){
@@ -167,7 +178,8 @@ const BattleHUD=(()=>{
   }
   function render(snapshot){
     const root=ensure(),u=snapshot?.selectedUnit;
-    root.classList.toggle("visible",!!u);
+    if(!u)manuallyHidden=false;
+    root.classList.toggle("visible",!!u&&!manuallyHidden);
     if(!u)return;
     root.querySelector(".battle-unit-name").textContent=u.name;
     root.querySelector(".battle-unit-hp-text").textContent=`HP ${u.hp}/${u.maxHp}`;
@@ -184,7 +196,9 @@ const BattleHUD=(()=>{
       fallback.textContent=(u.name||"?").slice(0,1);
     }
   }
-  return {render};
+  function hide(){manuallyHidden=true;ensure().classList.remove("visible");}
+  function allow(){manuallyHidden=false;}
+  return {render,hide,allow};
 })();
 
 /* ---------- Renderer ---------- */
@@ -201,21 +215,24 @@ function elevationAt(snapshot,x,y){
 }
 function drawExposedCliffs(scene,snapshot,tile,p,depth){
   const e=Number(tile.elevation||0);if(e<=0)return;
-  // In display space the two visible lower faces correspond to logical -x and +y.
-  const neighbors=[
-    {e:elevationAt(snapshot,tile.x-1,tile.y),side:"right"},
-    {e:elevationAt(snapshot,tile.x,tile.y+1),side:"left"}
+  const hw=CONFIG.tileWidth/2,hh=CONFIG.tileHeight/2;
+  const faces=[
+    {neighbor:{x:tile.x-1,y:tile.y},a:{x:p.x+hw,y:p.y},b:{x:p.x,y:p.y+hh},color:COLORS.cliffB},
+    {neighbor:{x:tile.x,y:tile.y+1},a:{x:p.x-hw,y:p.y},b:{x:p.x,y:p.y+hh},color:COLORS.cliffA}
   ];
-  neighbors.forEach(n=>{
-    const drop=Math.max(0,e-n.e);if(!drop)return;
-    const h=drop*CONFIG.elevationHeight,hw=CONFIG.tileWidth/2,hh=CONFIG.tileHeight/2;
+  faces.forEach(face=>{
+    const neighbor=tileAt(snapshot,face.neighbor.x,face.neighbor.y);
+    const neighborElevation=neighbor?Number(neighbor.elevation||0):0;
+    if(neighborElevation>=e)return;
+    const drop=(e-neighborElevation)*CONFIG.elevationHeight;
     const g=scene.add.graphics().setDepth(depth-1);
-    g.fillStyle(n.side==="left"?COLORS.cliffA:COLORS.cliffB,.98);
-    if(n.side==="left"){
-      g.beginPath();g.moveTo(p.x-hw,p.y);g.lineTo(p.x,p.y+hh);g.lineTo(p.x,p.y+hh+h);g.lineTo(p.x-hw,p.y+h);g.closePath();
-    }else{
-      g.beginPath();g.moveTo(p.x+hw,p.y);g.lineTo(p.x,p.y+hh);g.lineTo(p.x,p.y+hh+h);g.lineTo(p.x+hw,p.y+h);g.closePath();
-    }
+    g.fillStyle(face.color,.98);
+    g.beginPath();
+    g.moveTo(face.a.x,face.a.y);
+    g.lineTo(face.b.x,face.b.y);
+    g.lineTo(face.b.x,face.b.y+drop);
+    g.lineTo(face.a.x,face.a.y+drop);
+    g.closePath();
     g.fillPath();
   });
 }
@@ -223,16 +240,40 @@ function outline(scene,p,color,depth,scale=.88){
   const g=scene.add.graphics().setDepth(depth),hw=CONFIG.tileWidth/2*scale,hh=CONFIG.tileHeight/2*scale;
   g.lineStyle(4,color,1);g.beginPath();g.moveTo(p.x,p.y-hh);g.lineTo(p.x+hw,p.y);g.lineTo(p.x,p.y+hh);g.lineTo(p.x-hw,p.y);g.closePath();g.strokePath();
 }
+function drawDeployment(scene,tile,p,depth){
+  if(!tile.deployment&&!tile.capturePoint)return;
+  const colors={PLAYER:0x397bd1,ENEMY:0xcf4c4c,NEUTRAL:0xd0ae54};
+  if(tile.deployment){
+    const g=scene.add.graphics().setDepth(depth+2);
+    const hw=CONFIG.tileWidth/2,hh=CONFIG.tileHeight/2;
+    g.fillStyle(colors[tile.deployment]||colors.NEUTRAL,.24);
+    g.beginPath();g.moveTo(p.x,p.y-hh);g.lineTo(p.x+hw,p.y);g.lineTo(p.x,p.y+hh);g.lineTo(p.x-hw,p.y);g.closePath();g.fillPath();
+  }
+  if(tile.capturePoint)outline(scene,p,colors[tile.capturePoint.owner]||colors.NEUTRAL,depth+13,.58);
+}
+function drawRock(scene,p,depth,object){
+  const objectHeight=Math.max(28,Number(object.visualHeight||46));
+  const topY=p.y-objectHeight;
+  const g=scene.add.graphics().setDepth(depth+9);
+  g.fillStyle(0x727a84,1);
+  g.beginPath();
+  g.moveTo(p.x-23,p.y-15);g.lineTo(p.x,p.y-7);g.lineTo(p.x+22,p.y-17);
+  g.lineTo(p.x+18,topY+11);g.lineTo(p.x,topY);g.lineTo(p.x-19,topY+12);
+  g.closePath();g.fillPath();
+  g.lineStyle(2,0xaab1b8,.9);g.strokePath();
+  const top=scene.add.graphics().setDepth(depth+10);
+  top.fillStyle(0x9299a1,1);
+  top.beginPath();top.moveTo(p.x,topY);top.lineTo(p.x+18,topY+11);
+  top.lineTo(p.x,topY+20);top.lineTo(p.x-19,topY+12);top.closePath();top.fillPath();
+}
 function drawEnvironment(scene,snapshot,tile,p,depth){
+  drawDeployment(scene,tile,p,depth);
   if(tile.terrain==="FOREST")scene.add.text(p.x,p.y-18,"🌲",{fontSize:"25px"}).setOrigin(.5,1).setDepth(depth+6);
   if(tile.terrain==="WATER")scene.add.text(p.x,p.y,"≈",{fontSize:"23px",color:"#b9ecff"}).setOrigin(.5).setDepth(depth+3);
   const object=(snapshot.map.objects||[]).find(o=>!o.destroyed&&o.x===tile.x&&o.y===tile.y);
-  if(object){
-    const label=object.type==="ROCK"?"◆":"■";
-    scene.add.text(p.x,p.y-16,label,{fontSize:"28px",color:"#a7adb5",stroke:"#34383d",strokeThickness:4}).setOrigin(.5).setDepth(depth+8);
-  }else if(tile.terrain==="WALL"){
-    scene.add.rectangle(p.x,p.y-22,42,44,0x747b85).setStrokeStyle(2,0xaab0b8).setDepth(depth+8);
-  }
+  if(object?.type==="ROCK")drawRock(scene,p,depth,object);
+  else if(object)scene.add.rectangle(p.x,p.y-24,40,48,0x747b85).setStrokeStyle(2,0xaab0b8).setDepth(depth+9);
+  else if(tile.terrain==="WALL")scene.add.rectangle(p.x,p.y-22,42,44,0x747b85).setStrokeStyle(2,0xaab0b8).setDepth(depth+8);
   if(tile.effects.includes("BURNING"))scene.add.text(p.x-14,p.y-10,"🔥",{fontSize:"18px"}).setOrigin(.5).setDepth(depth+12);
   if(tile.effects.includes("STEAM"))scene.add.text(p.x+13,p.y-9,"♨",{fontSize:"17px"}).setOrigin(.5).setDepth(depth+12);
   if(tile.effects.includes("TRAP"))scene.add.text(p.x,p.y-5,"🪤",{fontSize:"20px"}).setOrigin(.5).setDepth(depth+12);
@@ -342,7 +383,12 @@ function ensureGame(){
       this.input.on("pointerup",p=>{
         if(drag&&!drag.moved){
           const w=p.positionToCamera(this.cameras.main),tile=nearestTile(w.x,w.y);
-          if(tile)BattleStateAdapter.clickTile(tile.x,tile.y);
+          if(tile){
+            const snapshot=BattleStateAdapter.snapshot();
+            const hasUnit=!!snapshot?.units.some(u=>u.x===tile.x&&u.y===tile.y);
+            if(hasUnit)BattleHUD.allow();else BattleHUD.hide();
+            BattleStateAdapter.clickTile(tile.x,tile.y);
+          }else BattleHUD.hide();
         }
         drag=null;if(!(this.input.pointer1.isDown&&this.input.pointer2.isDown))pinch=null;
       });
