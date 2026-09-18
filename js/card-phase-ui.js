@@ -14,7 +14,8 @@
     if(pending)previewId=null;
     const preview=previewId?CardDatabase.get(previewId):null,targeting=!!pending;
     host.classList.toggle("targeting-mode",targeting);host.classList.toggle("mulligan-mode",opening);
-    const enemyHtml=enemyState?`<div class="opponent-hand">${Array.from({length:enemyState.zones?.hand?.length||0},(_,i)=>`<i class="opponent-card-back" style="--fan:${i-((enemyState.zones?.hand?.length||1)-1)/2}"></i>`).join("")}</div><div class="opponent-meta">敵方　💎 ${enemyState.crystals||0}/${enemyState.crystalCapacity||0}　牌庫 ${enemyState.zones?.deck?.length||0}</div>${phase==="ENEMY_TURN"?`<div class="opponent-message">${enemyView?.message||"敵方思考中…"}</div>`:""}${phase==="ENEMY_TURN"&&enemyView?.cardId?`<div class="enemy-play-reveal">${CardDatabase.get(enemyView.cardId)?.name||""}</div>`:""}`:"";
+    const enemyMotion=phase==="ENEMY_TURN"?(enemyView?.kind==="DRAW"?"enemy-draw":enemyView?.kind==="CARD_SELECT"?"enemy-select":"enemy-thinking"):"";
+    const enemyHtml=enemyState?`<div class="opponent-hand ${enemyMotion}">${Array.from({length:enemyState.zones?.hand?.length||0},(_,i)=>`<i class="opponent-card-back" style="--fan:${i-((enemyState.zones?.hand?.length||1)-1)/2};--i:${i}"></i>`).join("")}</div><div class="opponent-meta">敵方　💎 ${enemyState.crystals||0}/${enemyState.crystalCapacity||0}　牌庫 ${enemyState.zones?.deck?.length||0}</div>${phase==="ENEMY_TURN"?`<div class="opponent-message">${enemyView?.message||"敵方思考中…"}</div>`:""}${phase==="ENEMY_TURN"&&enemyView?.cardId?`<div class="enemy-play-reveal">${CardDatabase.get(enemyView.cardId)?.name||""}</div>`:""}`:"";
     host.innerHTML=enemyHtml+
       `<div class="battle-resource">💎 ${state.crystals}/${state.crystalCapacity||state.startingCrystals||4}</div><div class="battle-deck-count">牌庫 ${state.zones.deck.length}</div>`+
       (opening?`<div class="mulligan-guide"><strong>起手換牌</strong><span>選擇不要的牌；整場僅一次。</span></div>`:"")+
