@@ -16,6 +16,7 @@
   let pendingReactionType=null;
   let selectedGuardian=null;
   let selectedGuardInterception=null;
+  let commandPanelCollapsed=false;
 
   function pushLog(text,type="SYSTEM"){
     logs.push(String(text));
@@ -448,6 +449,7 @@
   }
 
   function clearSelection(){
+    commandPanelCollapsed=false;
     selected=null;
     selectedSkill=null;
     selectedSkillVariant=null;
@@ -1076,6 +1078,7 @@
     }
 
     if(unit&&unit.team===TEAM.PLAYER){
+      commandPanelCollapsed=false;
       selected=unit;
       selectedSkill=null;
       clearEngagement();
@@ -1214,6 +1217,27 @@
     button.disabled=disabled;
     button.onclick=onClick;
     skillBar.appendChild(button);
+  }
+
+  function addCommandPanelClose(){
+    const button=document.createElement("button");
+    button.type="button";
+    button.className="battle-command-close";
+    button.textContent="×";
+    button.setAttribute("aria-label","關閉作戰選單");
+    button.onclick=()=>{
+      commandPanelCollapsed=true;
+      render();
+    };
+    skillBar.appendChild(button);
+  }
+
+  function renderCollapsedCommandButton(){
+    addActionButton("作戰選單",()=>{
+      commandPanelCollapsed=false;
+      render();
+    });
+    skillBar.classList.add("command-panel-collapsed");
   }
 
   function renderSupportSelection(){
@@ -1418,6 +1442,7 @@
 
   function renderPanel(){
     skillBar.innerHTML="";
+    skillBar.classList.remove("enemy-reaction-panel","command-panel-collapsed");
 
     if(matchResult){
       tacticalInfo.textContent=matchResult==="VICTORY"
@@ -1435,6 +1460,8 @@
 
     if(phase===PHASE.ENEMY){
       if(pendingEnemyAttack&&targetType(pendingEnemyAttack.skill)==="SINGLE"){
+        commandPanelCollapsed=false;
+        skillBar.classList.add("enemy-reaction-panel");
         if(mode==="enemy-counter-select"){
           renderCounterSelection();
         }else if(mode==="enemy-defense-select"){
@@ -1483,6 +1510,11 @@
     if(selected.acted) return;
 
     if(mode==="command"){
+      if(commandPanelCollapsed){
+        renderCollapsedCommandButton();
+        return;
+      }
+      addCommandPanelClose();
       if(!selected.moved){
         tacticalInfo.textContent+="\n可直接點亮起的格子移動，或直接選擇下方指令。";
       }
@@ -1526,6 +1558,8 @@
           :[];
 
     if(mode==="variant-menu"&&selectedSkill){
+      if(commandPanelCollapsed){renderCollapsedCommandButton();return;}
+      addCommandPanelClose();
       tacticalInfo.textContent+=`\n${selectedSkill.name}｜選擇使用方式。`;
       skillVariants(selectedSkill).forEach(variant=>{
         addActionButton(variant.name||variant.id,()=>{
@@ -1540,6 +1574,8 @@
     }
 
     if(mode==="attack-menu"||mode==="special-menu"){
+      if(commandPanelCollapsed){renderCollapsedCommandButton();return;}
+      addCommandPanelClose();
       const menuName=mode==="special-menu"?"魔法／特殊技能":"攻擊";
       if(!shownSkills.length){
         tacticalInfo.textContent+=`\n${menuName}：目前沒有可用技能。`;
