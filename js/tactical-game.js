@@ -796,7 +796,7 @@
   function guardCandidates(){
     if(!pendingEnemyAttack) return [];
     const {defender}=pendingEnemyAttack;
-    return BattleResolution.guardCandidates({units,target:defender});
+    return BattleResolution.guardCandidates({map,units,target:defender});
   }
 
   function chooseGuardian(guardian){
@@ -1213,8 +1213,7 @@
     button.className="action-button";
     button.disabled=disabled;
     button.onclick=onClick;
-    const engagementActions=skillBar.querySelector(".engagement-actions");
-    (engagementActions||skillBar).appendChild(button);
+    skillBar.appendChild(button);
   }
 
   function addCommandPanelClose(){
@@ -1259,9 +1258,6 @@
     stage.appendChild(center);
     stage.appendChild(appendEngagementUnit(enemy,"enemy"));
     skillBar.appendChild(stage);
-    const actions=document.createElement("div");
-    actions.className="engagement-actions";
-    skillBar.appendChild(actions);
   }
 
   function renderSupportSelection(){
@@ -1302,7 +1298,7 @@
         row.appendChild(button);
       });
 
-      (skillBar.querySelector(".engagement-actions")||skillBar).appendChild(row);
+      skillBar.appendChild(row);
     });
 
     addActionButton("開始交戰",confirmEngagement);
