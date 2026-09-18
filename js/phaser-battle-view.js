@@ -36,6 +36,7 @@ const COLORS=Object.freeze({
 });
 
 let game=null,sceneRef=null,drawQueued=false,drag=null,pinch=null,lastViewportKey="";
+let projectionMode="ISO";
 
 /* ---------- State adapter ---------- */
 const BattleStateAdapter=(()=>{
@@ -44,8 +45,6 @@ const BattleStateAdapter=(()=>{
     return window.StageDatabase?.get?.(id)||window.STAGES?.[id]||null;
   }
   function map(){
-    const runtimeMap=window.CardTacticsRuntime?.getBattleMap?.();
-    if(runtimeMap)return runtimeMap;
     const s=stage();
     if(!s)return null;
     return window.MapDatabase?.createMap?.(s.mapId)||null;
@@ -106,14 +105,11 @@ const BattleStateAdapter=(()=>{
       };
     });
     const units=cells.map((cell,index)=>parseUnit(cell,index,m.width)).filter(Boolean);
-    const hasRuntimeMap=!!window.CardTacticsRuntime?.getBattleMap?.();
-    const objects=hasRuntimeMap
-      ?(m.objects||[]).map(object=>({...object}))
-      :(m.objects||[]).map(object=>{
-        const runtimeTile=tiles.find(tile=>tile.x===object.x&&tile.y===object.y);
-        const destroyed=object.destructible&&object.breaksIntoTerrain&&runtimeTile?.terrain===object.breaksIntoTerrain;
-        return {...object,destroyed:object.destroyed||!!destroyed};
-      });
+    const objects=(m.objects||[]).map(object=>{
+      const runtimeTile=tiles.find(tile=>tile.x===object.x&&tile.y===object.y);
+      const destroyed=object.destructible&&object.breaksIntoTerrain&&runtimeTile?.terrain===object.breaksIntoTerrain;
+      return {...object,destroyed:object.destroyed||!!destroyed};
+    });
     return {
       stage:s,map:{...m,tiles,objects},units,
       selectedUnit:units.find(u=>u.selected)||null,
@@ -131,12 +127,14 @@ const BattleStateAdapter=(()=>{
 /* ---------- Pure projection ---------- */
 const IsoProjection=(()=>{
   function displayGrid(x,y,map){
-    // Rotate presentation so stage x=0 (player side) is visually at the bottom.
-    // Logical coordinates are never changed.
     return {u:y,v:(map.width-1)-x};
   }
   function point(x,y,elevation,map){
     const {u,v}=displayGrid(x,y,map);
+    if(projectionMode==="TOP"){
+      const size=76;
+      return {x:u*size,y:v*size};
+    }
     return {
       x:(u-v)*CONFIG.tileWidth/2,
       y:(u+v)*CONFIG.tileHeight/2-Number(elevation||0)*CONFIG.elevationHeight
@@ -144,6 +142,10 @@ const IsoProjection=(()=>{
   }
   function basePoint(x,y,map){return point(x,y,0,map);}
   function tileCorners(p){
+    if(projectionMode==="TOP"){
+      const h=38;
+      return [{x:p.x-h,y:p.y-h},{x:p.x+h,y:p.y-h},{x:p.x+h,y:p.y+h},{x:p.x-h,y:p.y+h}];
+    }
     const hw=CONFIG.tileWidth/2,hh=CONFIG.tileHeight/2;
     return [
       {x:p.x,y:p.y-hh},{x:p.x+hw,y:p.y},
@@ -189,8 +191,9 @@ const BattleHUD=(()=>{
     if(!unit?.visualId)return null;
     return window.VisualDatabase?.asset?.("characters",unit.visualId,"portrait")||null;
   }
+  let inspectedUnit=null;
   function render(snapshot){
-    const root=ensure(),u=snapshot?.selectedUnit;
+    const root=ensure(),u=inspectedUnit||snapshot?.selectedUnit;
     if(!u)manuallyHidden=false;
     root.classList.toggle("visible",!!u&&!manuallyHidden);
     if(!u)return;
@@ -209,16 +212,43 @@ const BattleHUD=(()=>{
       fallback.textContent=(u.name||"?").slice(0,1);
     }
   }
-  function hide(){manuallyHidden=true;ensure().classList.remove("visible");}
-  function allow(){manuallyHidden=false;}
-  return {render,hide,allow};
+  function hide(){manuallyHidden=true;inspectedUnit=null;ensure().classList.remove("visible");}
+  function allow(unit=null){manuallyHidden=false;if(unit)inspectedUnit=unit;}
+  function inspect(unit){inspectedUnit=unit||null;manuallyHidden=false;}
+  return {render,hide,allow,inspect};
 })();
+
+function ensureBattleViewControls(){
+  const toolbar=battleScreen.querySelector(".toolbar");if(!toolbar)return;
+  if(!document.getElementById("projectionToggle")){
+    const b=document.createElement("button");b.id="projectionToggle";b.type="button";b.textContent="正視圖";
+    b.addEventListener("click",()=>{
+      projectionMode=projectionMode==="ISO"?"TOP":"ISO";
+      b.textContent=projectionMode==="ISO"?"正視圖":"45°視角";
+      if(sceneRef){sceneRef.cameras.main.__ctReady=false;queue(true);}
+    });toolbar.prepend(b);
+  }
+  if(!document.getElementById("battleLogToggle")){
+    const b=document.createElement("button");b.id="battleLogToggle";b.type="button";b.textContent="戰鬥紀錄";
+    b.addEventListener("click",()=>document.getElementById("battleLogDrawer")?.classList.toggle("open"));toolbar.prepend(b);
+  }
+  if(!document.getElementById("battleLogDrawer")){
+    const d=document.createElement("aside");d.id="battleLogDrawer";d.className="battle-log-drawer";
+    d.innerHTML='<div class="battle-log-head"><strong>戰鬥紀錄</strong><button type="button">×</button></div><pre></pre>';
+    d.querySelector("button").onclick=()=>d.classList.remove("open");
+    battleScreen.querySelector("main")?.appendChild(d);
+  }
+}
+function syncBattleLogDrawer(){
+  const src=document.getElementById("battleLog"),dst=document.querySelector("#battleLogDrawer pre");
+  if(src&&dst)dst.textContent=src.textContent||"（目前沒有紀錄）";
+}
 
 /* ---------- Renderer ---------- */
 function diamond(g,p,fill,line=COLORS.grid){
-  const hw=CONFIG.tileWidth/2,hh=CONFIG.tileHeight/2;
-  g.fillStyle(fill,1);
-  g.beginPath();g.moveTo(p.x,p.y-hh);g.lineTo(p.x+hw,p.y);g.lineTo(p.x,p.y+hh);g.lineTo(p.x-hw,p.y);g.closePath();g.fillPath();
+  const corners=IsoProjection.tileCorners(p);
+  g.fillStyle(fill,1);g.beginPath();g.moveTo(corners[0].x,corners[0].y);
+  corners.slice(1).forEach(c=>g.lineTo(c.x,c.y));g.closePath();g.fillPath();
   g.lineStyle(2,line,.78);g.strokePath();
 }
 function terrainColor(type){return COLORS[type]??COLORS.PLAIN;}
@@ -256,6 +286,7 @@ function terrainEdges(snapshot,tile,p){
   });
 }
 function drawExposedCliffs(scene,snapshot,tile,p,depth){
+  if(projectionMode==="TOP")return;
   const elevation=Number(tile.elevation||0);
   if(elevation<=0)return;
 
@@ -282,17 +313,19 @@ function drawExposedCliffs(scene,snapshot,tile,p,depth){
     });
 }
 function outline(scene,p,color,depth,scale=.88){
-  const g=scene.add.graphics().setDepth(depth),hw=CONFIG.tileWidth/2*scale,hh=CONFIG.tileHeight/2*scale;
-  g.lineStyle(4,color,1);g.beginPath();g.moveTo(p.x,p.y-hh);g.lineTo(p.x+hw,p.y);g.lineTo(p.x,p.y+hh);g.lineTo(p.x-hw,p.y);g.closePath();g.strokePath();
+  const g=scene.add.graphics().setDepth(depth);
+  const corners=IsoProjection.tileCorners(p).map(c=>({x:p.x+(c.x-p.x)*scale,y:p.y+(c.y-p.y)*scale}));
+  g.lineStyle(4,color,1);g.beginPath();g.moveTo(corners[0].x,corners[0].y);
+  corners.slice(1).forEach(c=>g.lineTo(c.x,c.y));g.closePath();g.strokePath();
 }
 function drawDeployment(scene,tile,p,depth){
   if(!tile.deployment&&!tile.capturePoint)return;
   const colors={PLAYER:0x397bd1,ENEMY:0xcf4c4c,NEUTRAL:0xd0ae54};
   if(tile.deployment){
     const g=scene.add.graphics().setDepth(depth+.2);
-    const hw=CONFIG.tileWidth/2,hh=CONFIG.tileHeight/2;
+    const corners=IsoProjection.tileCorners(p);
     g.fillStyle(colors[tile.deployment]||colors.NEUTRAL,.24);
-    g.beginPath();g.moveTo(p.x,p.y-hh);g.lineTo(p.x+hw,p.y);g.lineTo(p.x,p.y+hh);g.lineTo(p.x-hw,p.y);g.closePath();g.fillPath();
+    g.beginPath();g.moveTo(corners[0].x,corners[0].y);corners.slice(1).forEach(c=>g.lineTo(c.x,c.y));g.closePath();g.fillPath();
   }
   if(tile.capturePoint)outline(scene,p,colors[tile.capturePoint.owner]||colors.NEUTRAL,depth+1.3,.58);
 }
@@ -325,7 +358,7 @@ function drawEnvironment(scene,snapshot,tile,p,depth){
 }
 function drawUnit(scene,unit,p,depth){
   const player=unit.team==="PLAYER",alpha=unit.finished?.5:1;
-  const c=scene.add.container(p.x,p.y-CONFIG.unitLift).setDepth(depth);
+  const c=scene.add.container(p.x,p.y-(projectionMode==="TOP"?20:CONFIG.unitLift)).setDepth(depth);
   c.add(scene.add.ellipse(0,38,55,16,0x000000,.38));
   c.add(scene.add.rectangle(0,0,58,72,player?0x2d67a7:0xa74444,.98).setStrokeStyle(3,unit.selected?0xffffff:0xd8e0e8).setAlpha(alpha));
   c.add(scene.add.text(0,-9,unit.name,{fontFamily:"system-ui,sans-serif",fontSize:"11px",fontStyle:"bold",color:"#fff",stroke:"#071018",strokeThickness:3,align:"center",wordWrap:{width:52}}).setOrigin(.5));
@@ -347,6 +380,7 @@ function worldDepth(snapshot,x,y,layer=0){
   return 1000+base.y*10+layer;
 }
 function renderScene(scene,{resetCamera=false}={}){
+  ensureBattleViewControls();syncBattleLogDrawer();
   const snapshot=BattleStateAdapter.snapshot();if(!snapshot)return;
   BattleHUD.render(snapshot);
   const N=normalized(snapshot),cam=scene.cameras.main;
@@ -392,9 +426,8 @@ function nearestTile(wx,wy){
   const N=normalized(snapshot);let best=null,bestScore=Infinity;
   snapshot.map.tiles.forEach(tile=>{
     const p=worldPoint(snapshot,tile,N);
-    const dx=Math.abs((wx-p.x)/(CONFIG.tileWidth/2));
-    const dy=Math.abs((wy-p.y)/(CONFIG.tileHeight/2));
-    const score=dx+dy;
+    const dx=Math.abs(wx-p.x),dy=Math.abs(wy-p.y);
+    const score=projectionMode==="TOP"?Math.max(dx/38,dy/38):dx/(CONFIG.tileWidth/2)+dy/(CONFIG.tileHeight/2);
     if(score<bestScore){bestScore=score;best=tile;}
   });
   return bestScore<=1.02?best:null;
@@ -435,9 +468,10 @@ function ensureGame(){
           const w=p.positionToCamera(this.cameras.main),tile=nearestTile(w.x,w.y);
           if(tile){
             const snapshot=BattleStateAdapter.snapshot();
-            const hasUnit=!!snapshot?.units.some(u=>u.x===tile.x&&u.y===tile.y);
-            if(hasUnit)BattleHUD.allow();else BattleHUD.hide();
+            const clickedUnit=snapshot?.units.find(u=>u.x===tile.x&&u.y===tile.y)||null;
+            if(clickedUnit)BattleHUD.inspect(clickedUnit);else BattleHUD.hide();
             BattleStateAdapter.clickTile(tile.x,tile.y);
+            queue(false);
           }else BattleHUD.hide();
         }
         drag=null;if(!(this.input.pointer1.isDown&&this.input.pointer2.isDown))pinch=null;
