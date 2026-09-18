@@ -9,10 +9,7 @@
 .phaser-battlefield{position:absolute;inset:0;width:100%;height:100%;min-height:0;overflow:hidden;border:0;border-radius:0;background:#111820;touch-action:none}
 .phaser-battlefield canvas{display:block;width:100%!important;height:100%!important;touch-action:none}
 .phaser-error{position:absolute;inset:0;display:grid;place-items:center;padding:24px;text-align:center;color:#ffd0d0;background:#251313}
-
-/* DOM battlefield is compatibility state/input only. It is not a second renderer. */
 .battlefield.phaser-source{display:none!important}
-
 .turn-status{position:absolute;z-index:35;top:8px;left:50%;transform:translateX(-50%);width:auto;min-width:260px;margin:0;padding:8px 14px;background:#081018cc}
 .toolbar{position:absolute;z-index:35;right:10px;top:42px;display:flex;gap:5px}
 .toolbar button{width:auto;padding:7px 10px;background:#081018cc}
@@ -25,8 +22,6 @@
 #skillBar .battle-command-close{display:none}
 #skillBar.command-panel-collapsed{display:none!important}
 #skillBar .support-choice{padding:5px;border:1px solid #ffffff14;border-radius:7px;background:#0b121caa}
-
-/* SINGLE engagement presentation: decisions here, actual combat remains on Phaser map. */
 #skillBar.engagement-overlay,#skillBar.enemy-reaction-panel{left:50%;top:50%;right:auto;bottom:auto;transform:translate(-50%,-50%);width:min(620px,calc(100vw - 18px));max-height:min(68vh,500px);overflow:auto}
 #skillBar.engagement-overlay:not(:empty),#skillBar.enemy-reaction-panel:not(:empty){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;padding:10px;border:1px solid #71849a;border-radius:14px;background:#081018e8;box-shadow:0 14px 44px #000c}
 .engagement-stage{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) 58px minmax(0,1fr);gap:8px;align-items:end;padding:4px 2px 10px;border-bottom:1px solid #ffffff18}
@@ -42,8 +37,6 @@
 #skillBar.enemy-reaction-panel:not(:empty){border-color:#9b6767;background:#140d11ed}
 #skillBar.enemy-reaction-panel:not(:empty)::before{content:"選擇反應";display:block;grid-column:1/-1;color:#ffd2d2;font-size:10px;font-weight:900;letter-spacing:.08em}
 #battleLog,.log-tabs,.battle-screen details{display:none}
-
-/* Selected-unit HUD */
 .battle-unit-hud{position:absolute;z-index:39;left:50%;top:52px;transform:translate(-50%,-8px);display:flex;align-items:center;gap:9px;width:min(390px,72vw);min-height:62px;padding:7px 10px;border:1px solid #647487;border-radius:12px;background:#081018e8;box-shadow:0 8px 24px #0008;opacity:0;pointer-events:none;transition:.14s ease}
 .battle-unit-hud.visible{opacity:1;transform:translate(-50%,0)}
 .battle-unit-portrait{width:48px;height:48px;flex:0 0 48px;border-radius:8px;overflow:hidden;border:1px solid #7d8da0;background:#1d2a38}
@@ -52,17 +45,11 @@
 .battle-unit-summary{min-width:0;flex:1}.battle-unit-name{font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .battle-unit-hp{height:8px;margin-top:4px;border-radius:99px;background:#351b1b;overflow:hidden}.battle-unit-hp i{display:block;height:100%;background:#55a96a}
 .battle-unit-hp-text,.battle-unit-status{margin-top:2px;font-size:10px;color:#d8e1ec}.battle-unit-status{color:#f0d89b}
-
-/* Hand overlay */
-
-/* Opening hand / Mulligan presentation */
 .mulligan-guide{position:absolute;z-index:78;left:50%;bottom:128px;transform:translateX(-50%);display:flex;gap:8px;align-items:center;padding:7px 10px;border:1px solid #8a7958;border-radius:9px;background:#081018ed;font-size:11px;white-space:nowrap;pointer-events:auto}
 .mulligan-guide span{color:#cbd4df}
 .mulligan-actions{position:absolute;z-index:79;left:50%;bottom:92px;transform:translateX(-50%);display:flex;gap:7px;pointer-events:auto}
 .mulligan-actions button{width:auto;padding:7px 10px}
 .fan-card.mulligan-selected{outline:3px solid #e2b45d;transform:translateY(-28px) rotate(0);z-index:12}
-
-/* Opponent hand: same card-table presentation, mirrored at the top. */
 .opponent-hand{position:fixed;z-index:52;left:50%;top:-48px;transform:translateX(-50%);height:150px;width:min(620px,78vw);display:flex;justify-content:center;align-items:flex-start;pointer-events:none}
 .opponent-card-back{--rot:calc(var(--fan)*-4deg);display:block;width:82px;height:116px;margin-left:-28px;border:2px solid #b88472;border-radius:9px;background:linear-gradient(145deg,#572c31,#171018 72%);box-shadow:0 5px 16px #0009;transform:rotate(var(--rot));transform-origin:50% -20%;position:relative}
 .opponent-card-back:first-child{margin-left:0}
@@ -76,7 +63,6 @@
 .opponent-meta{position:fixed;z-index:53;left:50%;top:57px;transform:translateX(-50%);padding:4px 8px;border:1px solid #684d4d;border-radius:7px;background:#120b0ed9;color:#e6caca;font-size:10px;font-weight:800;white-space:nowrap;pointer-events:none}
 .opponent-message{position:fixed;z-index:54;left:50%;top:82px;transform:translateX(-50%);max-width:min(480px,82vw);padding:4px 8px;border-radius:7px;background:#120b0ed9;color:#ffd2d2;font-size:10px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
 .enemy-play-reveal{position:fixed;z-index:96;left:50%;top:112px;transform:translateX(-50%);padding:7px 11px;border:1px solid #c59a75;border-radius:8px;background:#48252bf2;box-shadow:0 8px 24px #0009;color:#fff0e8;font-size:11px;font-weight:900;pointer-events:none}
-
 .battle-hand-shell{position:absolute!important;z-index:50;left:0;right:0;bottom:0;margin:0!important;padding:0!important;border:0!important;background:transparent!important;pointer-events:none}
 #cardPhasePanel{position:relative;height:142px;pointer-events:none}
 .battle-resource,.battle-deck-count{position:absolute;bottom:12px;z-index:56;padding:7px 10px;border:1px solid #5b6572;border-radius:8px;background:#081018dd;font-weight:800;pointer-events:auto}
@@ -92,7 +78,6 @@
 .preview-card-face strong{font-size:24px}.preview-card-face small{margin-top:12px;color:#c6cbd2}.preview-cost{position:absolute;left:10px;top:10px;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:#3566a8;font-size:20px;font-weight:900}
 .preview-question{font-weight:900;margin:10px 0 5px}.preview-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .card-phase-compact-actions{position:absolute;right:10px;bottom:52px;z-index:57;display:flex;gap:5px;pointer-events:auto}.card-phase-compact-actions button{width:auto;padding:7px 10px;background:#081018dd}
-
 @media(max-width:700px){
   .battle-shell-head{top:4px;left:5px}.battle-shell-head>button{min-width:74px;padding:7px}
   .turn-status{top:4px;min-width:0;max-width:55vw;font-size:11px;padding:7px 9px}
@@ -115,11 +100,6 @@
 .battle-unit-hud-close{position:absolute;right:7px;top:7px;width:25px;height:25px;padding:0;border:1px solid #647487;border-radius:50%;display:grid;place-items:center;background:#15202c;color:#dce5ef;font-size:18px;line-height:1;pointer-events:auto}
 .battle-unit-hud-close:active{transform:scale(.94)}
 .battle-unit-summary{padding-right:27px}
-
-
-/* Formal Card UI -> battlefield targeting state.
-   Once a card has been committed and needs a board target/deployment tile,
-   the hand yields the battlefield until targeting completes or is cancelled. */
 #cardPhasePanel.targeting-mode{height:58px}
 #cardPhasePanel.targeting-mode .fan-hand,
 #cardPhasePanel.targeting-mode .battle-resource,
@@ -128,25 +108,26 @@
 #cardPhasePanel.targeting-mode .card-preview,
 #cardPhasePanel.targeting-mode .mulligan-guide,
 #cardPhasePanel.targeting-mode .mulligan-actions{display:none}
+
+/* Targeting controls live above the iOS bottom/edge gesture area.
+   Runtime ownership is unchanged: this is presentation/input geometry only. */
 .card-targeting-bar{
-  position:absolute;left:50%;bottom:8px;transform:translateX(-50%);
-  z-index:80;display:flex;align-items:center;gap:9px;
-  width:min(560px,calc(100vw - 20px));min-height:42px;padding:6px 8px;
+  position:fixed;left:50%;bottom:max(74px,calc(env(safe-area-inset-bottom) + 62px));transform:translateX(-50%);
+  z-index:130;display:flex;align-items:center;gap:9px;
+  width:min(560px,calc(100vw - 32px));min-height:42px;padding:6px 8px;
   border:1px solid #647487;border-radius:11px;background:#081018e8;
-  box-shadow:0 8px 24px #0008;pointer-events:auto
+  box-shadow:0 8px 24px #0008;pointer-events:auto;touch-action:manipulation
 }
-.card-targeting-bar button{width:auto;flex:0 0 auto;padding:6px 9px}
+.card-targeting-bar button{width:auto;flex:0 0 auto;padding:6px 9px;touch-action:manipulation}
 .card-targeting-bar strong{flex:0 0 auto;max-width:34%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .card-targeting-bar span{min-width:0;flex:1;color:#d8e1ec;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-
 @media(max-width:700px){
   #cardPhasePanel.targeting-mode{height:52px}
-  .card-targeting-bar{bottom:5px;min-height:38px;gap:6px;padding:5px 6px}
-  .card-targeting-bar button{font-size:10px;padding:5px 7px}
+  .card-targeting-bar{bottom:max(68px,calc(env(safe-area-inset-bottom) + 58px));width:calc(100vw - 32px);min-height:42px;gap:6px;padding:5px 6px}
+  .card-targeting-bar button{font-size:11px;min-width:72px;min-height:38px;padding:7px 10px}
   .card-targeting-bar strong{max-width:28%;font-size:11px}
   .card-targeting-bar span{font-size:10px}
 }
-
 .enemy-turn-panel{position:absolute;z-index:95;left:50%;bottom:8px;transform:translateX(-50%);width:min(520px,calc(100vw - 20px));min-height:96px;padding:8px 12px;border:1px solid #8d6262;border-radius:13px;background:#120b0eeF;box-shadow:0 12px 38px #000b;pointer-events:none;text-align:center}
 .enemy-turn-title{font-size:12px;font-weight:900;color:#ffc0c0}.enemy-card-backs{height:34px;display:flex;justify-content:center;align-items:center}.enemy-card-backs i{display:block;width:24px;height:32px;margin-left:-6px;border:1px solid #b88472;border-radius:4px;background:linear-gradient(145deg,#572c31,#171018)}.enemy-card-backs i:first-child{margin-left:0}
 .enemy-turn-message{font-size:11px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.enemy-played-card{position:absolute;left:8px;bottom:7px;padding:5px 7px;border:1px solid #c59a75;border-radius:6px;background:#48252b;font-size:9px}
