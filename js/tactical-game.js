@@ -532,10 +532,9 @@
 
   function targetsForEnemySkill(enemy,skill){
     const r=skill.range||{min:1,max:1};
-    return living(TEAM.PLAYER).filter(target=>{
-      const d=distance(enemy,target);
-      return d>=r.min&&d<=r.max;
-    });
+    return living(TEAM.PLAYER).filter(target=>
+      TacticalEngine.canTarget(map,enemy,target,skill)
+    );
   }
 
   function chooseEnemyAttack(enemy){
@@ -1007,7 +1006,7 @@
 
     const targets=
       selected&&phase===PHASE.PLAYER&&!selected.acted&&mode==="attack"&&selectedSkill&&targetType(selectedSkill)==="SINGLE"
-        ?TacticalEngine.targets(units,selected,selectedSkill)
+        ?TacticalEngine.targets(map,units,selected,selectedSkill)
         :[];
     const mapTargets=
       selected&&phase===PHASE.PLAYER&&!selected.acted&&mode==="map-target"&&selectedSkill
@@ -1120,7 +1119,10 @@
       initiator:attacker,
       target:defender,
       canUseSkill
-    });
+    }).map(candidate=>({
+      ...candidate,
+      skills:candidate.skills.filter(supportSkill=>TacticalEngine.canTarget(map,candidate.ally,defender,supportSkill))
+    })).filter(candidate=>candidate.skills.length);
 
     pendingEngagement={attacker,defender,skill,candidates};
     supportSelection=new Map();
@@ -1317,6 +1319,7 @@
       attacker,
       canUseSkill
     });
+    prep.counterSkills=prep.counterSkills.filter(counterSkill=>TacticalEngine.canTarget(map,defender,attacker,counterSkill));
 
     tacticalInfo.textContent=
       `敵方攻擊｜${attacker.character.name} → ${defender.character.name}\n`+
@@ -1340,6 +1343,7 @@
       attacker,
       canUseSkill
     });
+    prep.counterSkills=prep.counterSkills.filter(counterSkill=>TacticalEngine.canTarget(map,defender,attacker,counterSkill));
 
     tacticalInfo.textContent=
       `反擊選擇｜${defender.character.name}\n`+
@@ -1367,6 +1371,7 @@
       attacker,
       canUseSkill
     });
+    prep.counterSkills=prep.counterSkills.filter(counterSkill=>TacticalEngine.canTarget(map,defender,attacker,counterSkill));
 
     tacticalInfo.textContent=
       `防禦方式｜${defender.character.name}\n`+
@@ -1424,7 +1429,8 @@
     }
 
     const guardianMethods=BattleResolution.guardProfiles(guardian);
-    const counterSkills=BattleResolution.counterSkills({defender,attacker,canUseSkill});
+    const counterSkills=BattleResolution.counterSkills({defender,attacker,canUseSkill})
+      .filter(counterSkill=>TacticalEngine.canTarget(map,defender,attacker,counterSkill));
 
     if(!selectedGuardInterception){
       tacticalInfo.textContent=

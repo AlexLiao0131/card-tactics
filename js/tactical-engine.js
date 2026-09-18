@@ -90,11 +90,45 @@ window.TacticalEngine=(()=>{
     return path
   }
   function range(s){return s.range}
-  function targets(us,u,s){
-    let r=range(s);
+  function attackType(u,s){
+    const w=u?.character?.weapons?.[s?.weapon];
+    return s?.attackType==="INHERIT"?w?.attackType:s?.attackType;
+  }
+  function lineCells(from,to){
+    const cells=[],dx=to.x-from.x,dy=to.y-from.y,steps=Math.max(Math.abs(dx),Math.abs(dy));
+    if(steps<=1)return cells;
+    const seen=new Set();
+    for(let i=1;i<steps;i++){
+      const x=Math.round(from.x+dx*i/steps),y=Math.round(from.y+dy*i/steps),k=K(x,y);
+      if(k!==K(from.x,from.y)&&k!==K(to.x,to.y)&&!seen.has(k)){seen.add(k);cells.push({x,y,t:i/steps})}
+    }
+    return cells;
+  }
+  function hasLineOfSight(m,u,target,s){
+    if(!m||!u||!target)return false;
+    if(attackType(u,s)!=="SHOT"||s?.trajectory==="ARC")return true;
+    const from=tile(m,u.x,u.y),to=tile(m,target.x,target.y);
+    if(!from||!to)return false;
+    const fromEye=elevation(from)+0.5,toEye=elevation(to)+0.5;
+    return lineCells(u,target).every(p=>{
+      const middle=tile(m,p.x,p.y);
+      if(!middle)return false;
+      const rayHeight=fromEye+(toEye-fromEye)*p.t;
+      return elevation(middle)<rayHeight;
+    });
+  }
+  function canTarget(m,u,target,s){
+    if(!u?.alive||!target?.alive)return false;
+    const r=range(s)||{min:0,max:0},d=D(u,target);
+    if(d<r.min||d>r.max)return false;
+    if(s.target==="SELF")return target.id===u.id;
+    if(s.target==="ALLY"&&target.team!==u.team)return false;
+    if(s.target==="ENEMY"&&target.team===u.team)return false;
+    return hasLineOfSight(m,u,target,s);
+  }
+  function targets(m,us,u,s){
     if(s.target==="SELF")return[u];
-    if(s.target==="ALLY")return us.filter(v=>v.alive&&v.team===u.team&&D(u,v)>=r.min&&D(u,v)<=r.max);
-    return us.filter(v=>v.alive&&v.team!==u.team&&D(u,v)>=r.min&&D(u,v)<=r.max)
+    return us.filter(v=>canTarget(m,u,v,s));
   }
   function resolve(m,a,d,s,opt={}){
     ensureFacing(a);ensureFacing(d);
@@ -105,5 +139,5 @@ window.TacticalEngine=(()=>{
         dc={...d.character,modifiers:{...(d.character.modifiers||{}),evasion:Number(d.character.modifiers?.evasion||0)+eva}};
     return{result:BattleEngine.calculate(ac,dc,s,opt),terrain:{acc,eva,at,dt},facing:{attacker:a.facing,defender:d.facing,arc:relativeArc(d,a)}}
   }
-  return{tile,objectAt,isBlockedByObject,elevation,elevationDelta,canTraverseElevation,canActiveMove,reachable,pathTo,range,targets,resolve,ensureFacing,facingToward,faceToward,relativeArc}
+  return{tile,objectAt,isBlockedByObject,elevation,elevationDelta,canTraverseElevation,canActiveMove,reachable,pathTo,range,attackType,hasLineOfSight,canTarget,targets,resolve,ensureFacing,facingToward,faceToward,relativeArc}
 })();
