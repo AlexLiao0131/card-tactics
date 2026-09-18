@@ -17,13 +17,30 @@
 .toolbar{position:absolute;z-index:35;right:10px;top:42px;display:flex;gap:5px}
 .toolbar button{width:auto;padding:7px 10px;background:#081018cc}
 #tacticalInfo{position:absolute;z-index:34;left:10px;bottom:148px;width:min(390px,42vw);max-height:25vh;overflow:auto;margin:0;background:#081018dd;font-size:12px}
-#skillBar{position:fixed;z-index:120;left:50%;top:50%;right:auto;bottom:auto;transform:translate(-50%,-50%) scale(.98);width:min(380px,calc(100vw - 32px));max-height:min(62vh,520px);overflow:auto;margin:0;padding:0;border:0;background:transparent;pointer-events:none;opacity:0;transition:opacity .14s ease,transform .14s ease}
-#skillBar:not(:empty){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;padding:16px;border:1px solid #7e8da0;border-radius:18px;background:linear-gradient(165deg,#182433f5,#080e16f7 72%);box-shadow:0 22px 70px #000d,0 0 0 1px #ffffff0b inset;pointer-events:auto;opacity:1;transform:translate(-50%,-50%) scale(1)}
-#skillBar:not(:empty)::before{content:"BATTLE COMMAND";grid-column:1/-1;display:block;padding:0 2px 9px;border-bottom:1px solid #ffffff18;color:#dce8f5;font-size:10px;font-weight:900;letter-spacing:.18em}
-#skillBar:not(:empty) button{width:100%;min-height:48px;margin:0;padding:10px 12px;border:1px solid #66798e;border-radius:11px;background:linear-gradient(180deg,#25364a,#121c28);box-shadow:0 4px 12px #0006;color:#edf4fb;font-weight:800}
-#skillBar:not(:empty) button:not(:disabled):active{transform:translateY(1px);background:linear-gradient(180deg,#304761,#172536)}
-#skillBar:not(:empty) button:disabled{opacity:.38;filter:grayscale(.65)}
-#skillBar .support-choice{grid-column:1/-1;padding:8px;border:1px solid #ffffff14;border-radius:10px;background:#0b121caa}
+#skillBar{position:fixed;z-index:120;left:min(calc(var(--menu-x,50vw) + 40px),calc(100vw - 120px));top:clamp(84px,calc(var(--menu-y,50vh) - 18px),calc(100vh - 278px));width:108px;max-height:260px;overflow:auto;margin:0;padding:0;border:0;background:transparent;pointer-events:none;opacity:0}
+#skillBar:not(:empty){display:flex;flex-direction:column;gap:3px;padding:4px;border:1px solid #71849a;border-radius:9px;background:#09121bf2;box-shadow:0 8px 22px #000b;pointer-events:auto;opacity:1}
+#skillBar:not(:empty)::before{content:none}
+#skillBar:not(:empty) button{width:100%;min-height:33px;margin:0;padding:6px 5px;border:1px solid #53677c;border-radius:6px;background:linear-gradient(180deg,#26394d,#142231);color:#edf4fb;font-size:10px;font-weight:800}
+#skillBar:not(:empty) button:disabled{opacity:.38}
+#skillBar .battle-command-close{display:none}
+#skillBar.command-panel-collapsed{display:none!important}
+#skillBar .support-choice{padding:5px;border:1px solid #ffffff14;border-radius:7px;background:#0b121caa}
+
+/* SINGLE engagement presentation: decisions here, actual combat remains on Phaser map. */
+#skillBar.engagement-overlay,#skillBar.enemy-reaction-panel{left:50%;top:50%;right:auto;bottom:auto;transform:translate(-50%,-50%);width:min(620px,calc(100vw - 18px));max-height:min(68vh,500px);overflow:auto}
+#skillBar.engagement-overlay:not(:empty),#skillBar.enemy-reaction-panel:not(:empty){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;padding:10px;border:1px solid #71849a;border-radius:14px;background:#081018e8;box-shadow:0 14px 44px #000c}
+.engagement-stage{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) 58px minmax(0,1fr);gap:8px;align-items:end;padding:4px 2px 10px;border-bottom:1px solid #ffffff18}
+.engagement-unit{min-width:0;text-align:center}.engagement-figure{height:104px;display:flex;align-items:flex-end;justify-content:center;border:1px solid #53677c;border-radius:10px 10px 4px 4px;background:linear-gradient(180deg,#26394a88,#101822dd);overflow:hidden}
+.engagement-enemy .engagement-figure{background:linear-gradient(180deg,#512c3488,#1b1015dd)}
+.engagement-figure span{display:grid;place-items:center;width:64px;height:84px;margin-bottom:-8px;border-radius:34px 34px 10px 10px;background:#aeb9c522;color:#eaf2fb;font-size:11px;font-weight:900}
+.engagement-unit strong{display:block;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px}
+.engagement-hp{height:9px;margin-top:5px;border:1px solid #0008;border-radius:99px;background:#3b171a;overflow:hidden}.engagement-hp i{display:block;height:100%;background:#57a968}
+.engagement-unit small{display:block;margin-top:2px;color:#d9e3ed;font-size:9px}
+.engagement-versus{align-self:center;text-align:center}.engagement-versus b{display:block;font-size:18px}.engagement-versus span{display:block;margin-top:5px;font-size:9px;color:#f0d9a6;word-break:break-word}
+#skillBar.engagement-overlay>button,#skillBar.enemy-reaction-panel>button{min-height:38px}
+#skillBar.engagement-overlay .support-choice{grid-column:1/-1}
+#skillBar.enemy-reaction-panel:not(:empty){border-color:#9b6767;background:#140d11ed}
+#skillBar.enemy-reaction-panel:not(:empty)::before{content:"選擇反應";display:block;grid-column:1/-1;color:#ffd2d2;font-size:10px;font-weight:900;letter-spacing:.08em}
 #battleLog,.log-tabs,.battle-screen details{display:none}
 
 /* Selected-unit HUD */
@@ -82,7 +99,9 @@
   .toolbar{top:38px;right:5px}.toolbar button{font-size:10px;padding:6px}.toolbar #resetMap{display:none}
   .battle-unit-hud{top:78px;width:min(330px,76vw);min-height:54px;padding:5px 7px}.battle-unit-portrait{width:42px;height:42px;flex-basis:42px}
   #tacticalInfo{left:5px;bottom:136px;width:48vw;max-height:18vh;font-size:10px;padding:7px}
-  #skillBar{width:min(350px,calc(100vw - 22px));max-height:58vh}#skillBar:not(:empty){padding:13px;gap:8px}#skillBar button{font-size:11px;padding:9px 7px}
+  #skillBar{width:104px;max-height:245px}#skillBar:not(:empty){padding:4px;gap:3px}#skillBar button{font-size:10px;padding:5px;min-height:32px}
+  #skillBar.engagement-overlay,#skillBar.enemy-reaction-panel{width:calc(100vw - 12px);max-height:62vh}
+  .engagement-stage{grid-template-columns:minmax(0,1fr) 42px minmax(0,1fr);gap:5px}.engagement-figure{height:92px}
   #cardPhasePanel{height:132px}.fan-hand{width:94vw;bottom:-46px}
   .fan-card{width:88px;min-width:88px;height:132px;margin-left:-30px;padding:7px 5px}
   .fan-name{font-size:12px}.fan-card small{font-size:9px}
