@@ -9,6 +9,7 @@
   let enemyStepTimer=null;
   let pendingEngagement=null;
   let supportSelection=new Map();
+  let pendingCopySkill=null;
 
   // Engagement Step 4: enemy SINGLE attacks pause here until the player chooses a reaction.
   let enemyQueue=[];
@@ -111,7 +112,7 @@
         pushLog(`天候變更：${weather==="THUNDERSTORM"?"雷雨":weather==="HEAVY_RAIN"?"豪大雨":weather==="FOG"?"迷霧":weather}。`,"SYSTEM");
         pendingCard=null;render();window.dispatchEvent(new CustomEvent("cardtactics:state"));return true;
       }
-      if(["AREA_FIRE","AREA_PUSH","AREA_HEAL","AREA_DAMAGE"].includes(card.effect?.type)){
+      if(["AREA_FIRE","AREA_PUSH","AREA_HEAL","AREA_DAMAGE","AREA_RELATION","AREA_BUFF","DISPEL"].includes(card.effect?.type)){
         pendingCard=card;
         pushLog(`選擇卡牌魔法「${card.name}」｜請點選戰場上的施放中心。`,"SYSTEM");
         render();return true;
@@ -176,6 +177,14 @@
       affected.forEach(tile=>{const u=unitAt(tile.x,tile.y);if(!u?.alive||u.team!==TEAM.PLAYER)return;const before=u.hp;u.hp=Math.min(u.character.combat.hp,u.hp+Number(effect.heal||0));pushLog(`${card.name} → ${u.character.name}｜回復 ${u.hp-before} HP｜HP ${u.hp}。`,"BATTLE");});
     }else if(effect.type==="AREA_DAMAGE"){
       affected.forEach(tile=>{const u=unitAt(tile.x,tile.y);if(u)damageUnitFlat(u,effect.damage||0,card.name);(EnvironmentEngine.apply({map,state:environmentState,x:tile.x,y:tile.y,forces:effect.forces||[]})||[]).forEach(logEnvironmentEvent);});
+    }else if(effect.type==="AREA_RELATION"){
+      const source={id:"CARD_SOURCE",team:TEAM.PLAYER};
+      affected.forEach(tile=>{const u=unitAt(tile.x,tile.y);if(!u?.alive)return;for(const e of effect.effects||[]){if(e.relation!==EffectEngine.relation(source,u))continue;const r=EffectEngine.apply({source,target:u,effect:e});if(e.type==="HEAL")pushLog(`${card.name} → ${u.character.name}｜回復 ${r.amount||0} HP｜HP ${u.hp}。`,"BATTLE");else if(e.type==="MAGIC_DAMAGE"){pushLog(`${card.name} → ${u.character.name}｜${r.amount||0} 神聖傷害｜HP ${u.hp}。`,"BATTLE");if(!u.alive)handleDefeated(u,null,card);}}});
+    }else if(effect.type==="AREA_BUFF"){
+      const source={id:"CARD_SOURCE",team:TEAM.PLAYER};
+      affected.forEach(tile=>{const u=unitAt(tile.x,tile.y);if(!u?.alive||!EffectEngine.targetMatches(source,u,effect.targetFilter||{}))return;EffectEngine.apply({source,target:u,effect:{type:"BUFF",duration:effect.duration,...(effect.buff||{})}});pushLog(`${card.name} → ${u.character.name}｜獲得陣地強化。`,"BATTLE");});
+    }else if(effect.type==="DISPEL"){
+      const u=unitAt(center.x,center.y);if(u?.alive&&u.team===TEAM.PLAYER){const r=EffectEngine.apply({source:{id:"CARD_SOURCE",team:TEAM.PLAYER},target:u,effect:{type:"DISPEL",classification:effect.classification||"NEGATIVE"}});pushLog(`${card.name} → ${u.character.name}｜移除 ${r.removed||0} 個負面效果。`,"BATTLE");}
     }
     pendingCard=null;checkMatchEnd();render();window.dispatchEvent(new CustomEvent("cardtactics:state"));return true;
   }
@@ -215,7 +224,8 @@
   }
 
   function createUnit(id,team,characterId,x,y){
-    const character=CHARACTERS[characterId];
+    const sourceCharacter=CHARACTERS[characterId];
+    const character=JSON.parse(JSON.stringify(sourceCharacter));
     return {
       id,team,character,x,y,
       hp:character.combat.hp,
@@ -223,7 +233,9 @@
       moved:false,
       acted:false,
       waited:false,
-      skillResources:createSkillResources(character)
+      skillResources:createSkillResources(character),
+      effects:[],
+      grantedSkills:[]
     };
   }
 
@@ -342,7 +354,7 @@
   function coreTargetSkills(unit,core){
     if(!unit||!core||core.hp<=0)return[];
     const target={x:core.x,y:core.y,team:unit.team===TEAM.PLAYER?TEAM.ENEMY:TEAM.PLAYER,alive:true};
-    return SkillDatabase.list(unit.character.skills).filter(skill=>skill.category==="ATTACK"&&targetType(skill)==="SINGLE"&&canUseSkill(unit,skill)&&TacticalEngine.canTarget(map,unit,target,skill));
+    return SkillDatabase.list(window.EffectEngine?EffectEngine.skillIds(unit):unit.character.skills).filter(skill=>skill.category==="ATTACK"&&targetType(skill)==="SINGLE"&&canUseSkill(unit,skill)&&TacticalEngine.canTarget(map,unit,target,skill));
   }
   function executeCoreAttack(unit,core,skill){
     if(!unit?.alive||unit.acted||!core||!coreTargetSkills(unit,core).some(s=>s.id===skill.id))return false;
@@ -423,6 +435,7 @@
   }
 
   function canUseSkill(unit,skill){
+    if(skill?.approach&&unit?.moved)return false;
     const r=resourceFor(unit,skill);
     if(r.type==="USES") return r.remaining>0;
     return true;
@@ -520,6 +533,7 @@
     clearEnemyReaction();
     enemyQueue=[];
     pushLog(`Round ${round}｜我方回合開始。`,"SYSTEM");
+    if(window.EffectEngine)units.filter(u=>u.alive).forEach(u=>EffectEngine.tick(u));
     stageEvent({type:"ROUND_START",round,team:"PLAYER"});
     if(environmentState){
       applyEnvironmentHazards({reason:"回合開始仍處於燃燒區"});
@@ -536,7 +550,7 @@
   }
 
   function enemySingleSkills(enemy){
-    return SkillDatabase.list(enemy.character.skills).filter(skill=>
+    return SkillDatabase.list(window.EffectEngine?EffectEngine.skillIds(enemy):enemy.character.skills).filter(skill=>
       skill.target==="ENEMY" &&
       targetType(skill)==="SINGLE" &&
       canUseSkill(enemy,skill)
@@ -1102,6 +1116,11 @@
       return;
     }
 
+    if(selected&&!selected.acted&&mode==="attack"&&unit&&targets.includes(unit)){
+      prepareAttack(selected,unit,selectedSkill);
+      return;
+    }
+
     if(unit&&unit.team===TEAM.PLAYER){
       commandPanelCollapsed=false;
       selected=unit;
@@ -1122,16 +1141,71 @@
       return;
     }
 
-    if(selected&&!selected.acted&&mode==="attack"&&unit&&targets.includes(unit)){
-      prepareAttack(selected,unit,selectedSkill);
-      return;
-    }
     if(selected&&!selected.acted&&mode==="command"&&!unit)commandPanelCollapsed=true;
     render();
   }
 
+  function finishActiveSkill(attacker){
+    attacker.moved=true;attacker.acted=true;attacker.waited=true;
+    selectedSkill=null;selectedSkillVariant=null;mode="inspect";
+    if(checkMatchEnd()){render();return true;}
+    render();return true;
+  }
+
+  function executeEffectSkill(attacker,target,skill){
+    if(!window.EffectEngine||!canUseSkill(attacker,skill))return false;
+    consumeSkill(attacker,skill);
+    const results=[];
+    if(Array.isArray(skill.relationEffects)){
+      const rel=EffectEngine.relation(attacker,target);
+      for(const effect of skill.relationEffects.filter(e=>e.relation===rel)){
+        if(effect.type==="MAGIC_DAMAGE"){
+          const attackSkill={...skill,power:Number(effect.power||1),attackType:"MAGIC",element:effect.element||"NONE",traitMultipliers:effect.traitMultipliers||{},weapon:effect.weapon||skill.weapon};
+          const result=BattleEngine.calculate(attacker.character,target.character,attackSkill);
+          if(result.hit){target.hp=Math.max(0,target.hp-result.damage);if(target.hp===0)target.alive=false;}
+          results.push({type:"MAGIC_DAMAGE",...result});
+          pushLog(`${attacker.character.name} → ${target.character.name}｜${skill.name} ${result.hit?result.damage+" 傷害":"MISS"}｜HP ${target.hp}。`,"BATTLE");
+          if(!target.alive)handleDefeated(target,attacker,skill);
+        }else{
+          const r=EffectEngine.apply({source:attacker,target,effect});results.push(r);
+          if(effect.type==="HEAL")pushLog(`${skill.name} → ${target.character.name}｜回復 ${r.amount||0} HP｜HP ${target.hp}。`,"BATTLE");
+        }
+      }
+    }else if(Array.isArray(skill.effects)){
+      for(const effect of skill.effects){const r=EffectEngine.apply({source:attacker,target,effect});results.push(r);if(effect.type==="HEAL")pushLog(`${skill.name} → ${target.character.name}｜回復 ${r.amount||0} HP｜HP ${target.hp}。`,"BATTLE");}
+    }
+    if(skill.bloodAction){
+      const b=skill.bloodAction;
+      const drain=EffectEngine.apply({source:attacker,target,effect:{type:"DRAIN",amount:b.damage,healRatio:b.healRatio}});results.push(drain);
+      EffectEngine.apply({source:attacker,target:attacker,effect:{type:"ATTRIBUTE_OVERRIDE",id:"BLOOD_GENOME_RESTORATION",classification:"POSITIVE",duration:b.duration,values:b.restoresGenome}});
+      pushLog(`${attacker.character.name} 吸取 ${target.character.name} 的血｜${drain.damage||0} 傷害｜自癒 ${drain.healed||0} HP｜暫時恢復 5V。`,"BATTLE");
+      if(!target.alive)handleDefeated(target,attacker,skill);
+      if(b.copySkill){
+        const options=EffectEngine.copyableSkills(target);
+        if(options.length){pendingCopySkill={attacker,target,options,duration:b.copyDuration};mode="copy-skill-select";render();return true;}
+      }
+    }
+    return finishActiveSkill(attacker);
+  }
+
+  function approachForSkill(attacker,defender,skill){
+    if(!skill?.approach)return true;
+    if(attacker.moved)return false;
+    const stop=Math.max(1,Number(skill.approach.stopDistance||1));
+    const candidates=map.tiles.filter(t=>Math.abs(t.x-defender.x)+Math.abs(t.y-defender.y)===stop&&!unitAt(t.x,t.y));
+    const paths=candidates.map(t=>TacticalEngine.pathTo(map,units,attacker,t.x,t.y)).filter(path=>path.length).sort((a,b)=>a.length-b.length);
+    if(!paths.length)return false;
+    const result=traverseUnitPath(attacker,paths[0],{kind:"UNIT"});
+    if(!result.completed)return false;
+    attacker.moved=true;
+    pushLog(`${attacker.character.name} 以 ${skill.name} 衝至 ${defender.character.name} 身前。`,"BATTLE");
+    return true;
+  }
+
   function prepareAttack(attacker,defender,skill){
     if(!canUseSkill(attacker,skill)) return;
+    if(skill.approach&&!approachForSkill(attacker,defender,skill)){pushLog(`${skill.name} 無合法衝鋒路徑。`,"SYSTEM");render();return;}
+    if(skill.effects||skill.relationEffects||skill.bloodAction){executeEffectSkill(attacker,defender,skill);return;}
     skill=effectiveSkill(attacker,skill);
     if(skill.ambushActive)pushLog(`${attacker.character.name}｜伏擊發動：弓擊威力與速度提升。`,"BATTLE");
 
@@ -1622,7 +1696,7 @@
       addActionButton("返回",()=>{mode="command";render();});return;
     }
 
-    const allSkills=SkillDatabase.list(selected.character.skills);
+    const allSkills=SkillDatabase.list(window.EffectEngine?EffectEngine.skillIds(selected):selected.character.skills);
     const isSpecial=skill=>skill.category!=="ATTACK";
     const shownSkills=
       mode==="special-menu"
@@ -1644,6 +1718,17 @@
         });
       });
       addActionButton("返回",()=>{const special=selectedSkill?.category!=="ATTACK";selectedSkill=null;selectedSkillVariant=null;mode=special?"special-menu":"attack-menu";render();});
+      return;
+    }
+
+    if(mode==="copy-skill-select"&&pendingCopySkill){
+      addCommandPanelClose();
+      tacticalInfo.textContent+=`\n吸血完成｜選擇要複製 ${pendingCopySkill.target.character.name} 的一項能力。`;
+      pendingCopySkill.options.forEach(skill=>addActionButton(skill.name,()=>{
+        EffectEngine.grantSkill(pendingCopySkill.attacker,skill.id,{source:pendingCopySkill.target,duration:pendingCopySkill.duration,replaceGroup:"BLOOD_COPY"});
+        pushLog(`${pendingCopySkill.attacker.character.name} 從血液中複製了「${skill.name}」。`,"BATTLE");
+        const actor=pendingCopySkill.attacker;pendingCopySkill=null;finishActiveSkill(actor);
+      }));
       return;
     }
 

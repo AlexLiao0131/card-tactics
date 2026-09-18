@@ -4,6 +4,9 @@ window.CARD_GROUPS={
   MAGIC:{id:"MAGIC",name:"魔法",cards:["thunderstorm_card","wildfire_card","tornado_card","miracle_card","fog_card","starfall_card"]},
   ELF_EMPIRE:{id:"ELF_EMPIRE",name:"精靈帝國",cards:["reina_card","elf_shapeshifter_card","elf_ranger_card","elf_guard_card","elf_priest_card"]},
   OPHI_SUPPLEMENT:{id:"OPHI_SUPPLEMENT",name:"奧菲補充包",cards:["ophi_card","colin_card","moon_goddess_blessing_card"]},
+  CHURCH:{id:"CHURCH",name:"教會",cards:["church_templar_hero_card","church_apprentice_card","church_heavy_knight_card","church_templar_card","church_bishop_card","church_redemption_card","church_dispel_card","church_judgement_card","church_entrenchment_card"]},
+  SAINT_SUPPLEMENT:{id:"SAINT_SUPPLEMENT",name:"聖女補充包",cards:["church_saint_card"]},
+  SERAPHINA_SUPPLEMENT:{id:"SERAPHINA_SUPPLEMENT",name:"Seraphina 補充包",cards:["seraphina_card"]},
   OTHER:{id:"OTHER",name:"其他／測試",cards:["rain_card","resurrection_card"]}
 };
 
@@ -36,6 +39,19 @@ window.PACK_PRODUCTS={
     },
     fallback:["elf_ranger_card","elf_guard_card","elf_priest_card","elf_shapeshifter_card"]
   },
+  CHURCH_SEASON_TEST:{
+    id:"CHURCH_SEASON_TEST",name:"教會陣營包",kind:"FACTION",season:"TEST_SEASON",
+    description:"15 張測試包｜騎士學徒・重裝騎士・聖殿騎士・主教＋教會專屬魔法｜HERO Bonus 0.5%",
+    slots:{basic:7,mid:3,factionSpell:3,advancedRolls:2},advancedChance:.25,heroBonusChance:.005,
+    pools:{
+      basic:["church_apprentice_card"],
+      mid:["church_heavy_knight_card","church_bishop_card"],
+      advanced:["church_templar_card"],
+      factionSpell:["church_redemption_card","church_dispel_card","church_judgement_card","church_entrenchment_card"],
+      hero:["church_templar_hero_card"]
+    },
+    fallback:["church_apprentice_card","church_heavy_knight_card","church_bishop_card","church_templar_card","church_dispel_card","church_judgement_card","church_entrenchment_card"]
+  },
   MAGIC_SEASON_TEST:{
     id:"MAGIC_SEASON_TEST",name:"魔法卡包",kind:"MAGIC",season:"TEST_SEASON",
     description:"15 張測試包｜目前從既有泛用魔法牌池抽取；正式季度配卡待內容完成後調整。",
@@ -50,7 +66,9 @@ window.PACK_PRODUCTS={
     id:"OPHI_FIXED",name:"奧菲補充包",kind:"SUPPLEMENT",season:"PERMANENT",
     description:"固定內容測試｜買斷型補充包，不進行隨機抽取。",
     cards:["ophi_card","colin_card","moon_goddess_blessing_card"]
-  }
+  },
+  SAINT_FIXED:{id:"SAINT_FIXED",name:"聖女補充包",kind:"SUPPLEMENT",season:"PERMANENT",description:"固定內容開發版｜目前先收錄聖女 HERO，其餘固定內容待故事卡設計完成後加入。",cards:["church_saint_card"]},
+  SERAPHINA_FIXED:{id:"SERAPHINA_FIXED",name:"Seraphina 補充包",kind:"SUPPLEMENT",season:"PERMANENT",description:"固定內容開發版｜目前先收錄 Seraphina HERO，其餘固定內容待後續設計。",cards:["seraphina_card"]}
 };
 
 window.PackDatabase=(()=>({
