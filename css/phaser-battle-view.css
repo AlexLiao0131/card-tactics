@@ -132,3 +132,6 @@
 .enemy-turn-title{font-size:12px;font-weight:900;color:#ffc0c0}.enemy-card-backs{height:34px;display:flex;justify-content:center;align-items:center}.enemy-card-backs i{display:block;width:24px;height:32px;margin-left:-6px;border:1px solid #b88472;border-radius:4px;background:linear-gradient(145deg,#572c31,#171018)}.enemy-card-backs i:first-child{margin-left:0}
 .enemy-turn-message{font-size:11px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.enemy-played-card{position:absolute;left:8px;bottom:7px;padding:5px 7px;border:1px solid #c59a75;border-radius:6px;background:#48252b;font-size:9px}
 @media(max-width:700px){.enemy-turn-panel{bottom:5px;min-height:88px}.enemy-turn-message{font-size:10px}}
+
+/* Target selection uses the fixed toolbar cancel control; no floating target-back panel may cover the battlefield. */
+#skillBar.targeting-mode{display:none!important;pointer-events:none!important;}
