@@ -17,7 +17,10 @@
 .toolbar{position:absolute;z-index:35;right:10px;top:42px;display:flex;gap:5px}
 .toolbar button{width:auto;padding:7px 10px;background:#081018cc}
 #tacticalInfo{position:absolute;z-index:34;left:10px;bottom:148px;width:min(390px,42vw);max-height:25vh;overflow:auto;margin:0;background:#081018dd;font-size:12px}
-#skillBar{position:absolute;z-index:36;right:10px;bottom:145px;width:min(390px,42vw);margin:0}
+#skillBar{position:absolute;z-index:90;left:50%;top:50%;right:auto;bottom:auto;transform:translate(-50%,-50%);width:min(430px,calc(100vw - 28px));max-height:min(60vh,520px);overflow:auto;margin:0;padding:0;background:transparent;pointer-events:none}
+#skillBar:not(:empty){display:grid;gap:8px;padding:12px;border:1px solid #647487;border-radius:14px;background:#081018f2;box-shadow:0 18px 54px #000c;pointer-events:auto}
+#skillBar:not(:empty)::before{content:"作戰選單";display:block;color:#e8eef6;font-size:12px;font-weight:900;letter-spacing:.08em}
+#skillBar:not(:empty) button{width:100%;min-height:42px;margin:0}
 #battleLog,.log-tabs,.battle-screen details{display:none}
 
 /* Selected-unit HUD */
@@ -43,6 +46,12 @@
 .opponent-hand{position:fixed;z-index:52;left:50%;top:-48px;transform:translateX(-50%);height:150px;width:min(620px,78vw);display:flex;justify-content:center;align-items:flex-start;pointer-events:none}
 .opponent-card-back{--rot:calc(var(--fan)*-4deg);display:block;width:82px;height:116px;margin-left:-28px;border:2px solid #b88472;border-radius:9px;background:linear-gradient(145deg,#572c31,#171018 72%);box-shadow:0 5px 16px #0009;transform:rotate(var(--rot));transform-origin:50% -20%;position:relative}
 .opponent-card-back:first-child{margin-left:0}
+.opponent-hand.enemy-thinking .opponent-card-back{animation:enemy-hand-breathe 1.35s ease-in-out infinite alternate;animation-delay:calc(var(--i)*55ms)}
+.opponent-hand.enemy-draw .opponent-card-back:last-child{animation:enemy-card-draw .55s cubic-bezier(.2,.75,.2,1) both}
+.opponent-hand.enemy-select .opponent-card-back:last-child{animation:enemy-card-select .45s ease both}
+@keyframes enemy-hand-breathe{from{transform:translateY(0) rotate(var(--rot))}to{transform:translateY(3px) rotate(var(--rot))}}
+@keyframes enemy-card-draw{0%{opacity:0;transform:translate(110px,-78px) rotate(18deg) scale(.78)}70%{opacity:1;transform:translate(5px,7px) rotate(0deg) scale(1.05)}100%{opacity:1;transform:rotate(var(--rot)) scale(1)}}
+@keyframes enemy-card-select{0%{transform:rotate(var(--rot))}55%{transform:translateY(28px) rotate(0deg) scale(1.06)}100%{transform:rotate(var(--rot))}}
 .opponent-card-back::after{content:"";position:absolute;inset:7px;border:1px solid #8f5c58;border-radius:5px;background:repeating-linear-gradient(45deg,#2a171b 0 5px,#3c2026 5px 10px)}
 .opponent-meta{position:fixed;z-index:53;left:50%;top:57px;transform:translateX(-50%);padding:4px 8px;border:1px solid #684d4d;border-radius:7px;background:#120b0ed9;color:#e6caca;font-size:10px;font-weight:800;white-space:nowrap;pointer-events:none}
 .opponent-message{position:fixed;z-index:54;left:50%;top:82px;transform:translateX(-50%);max-width:min(480px,82vw);padding:4px 8px;border-radius:7px;background:#120b0ed9;color:#ffd2d2;font-size:10px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
@@ -70,7 +79,7 @@
   .toolbar{top:38px;right:5px}.toolbar button{font-size:10px;padding:6px}.toolbar #resetMap{display:none}
   .battle-unit-hud{top:78px;width:min(330px,76vw);min-height:54px;padding:5px 7px}.battle-unit-portrait{width:42px;height:42px;flex-basis:42px}
   #tacticalInfo{left:5px;bottom:136px;width:48vw;max-height:18vh;font-size:10px;padding:7px}
-  #skillBar{right:5px;bottom:136px;width:46vw;gap:3px}#skillBar button{font-size:10px;padding:7px 5px}
+  #skillBar{left:50%;top:50%;right:auto;bottom:auto;width:min(360px,calc(100vw - 24px));max-height:54vh;gap:7px}#skillBar button{font-size:11px;padding:9px 7px}
   #cardPhasePanel{height:132px}.fan-hand{width:94vw;bottom:-46px}
   .fan-card{width:88px;min-width:88px;height:132px;margin-left:-30px;padding:7px 5px}
   .fan-name{font-size:12px}.fan-card small{font-size:9px}
