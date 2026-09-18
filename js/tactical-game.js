@@ -3,7 +3,7 @@
   const TEAM={PLAYER:"P",ENEMY:"E"};
   const PHASE={CARD:"CARD_PHASE",PLAYER:"PLAYER_TURN",ENEMY:"ENEMY_TURN",ENDED:"MATCH_ENDED"};
 
-  let map,units,selected,mode,selectedSkill,selectedSkillVariant,logs,round,phase,matchResult,stage,stageState,environmentState,inspectedTile;
+  let map,units,selected,mode,selectedSkill,selectedSkillVariant,logs,round,phase,matchResult,stage,stageState,environmentState,inspectedTile,cores=[];
   let logState=BattleLog.create(),cardState=null,enemyCardState=null,pendingCard=null,unitSerial=0;
   let enemyView={active:false,kind:null,message:"",cardId:null,unitId:null};
   let enemyStepTimer=null;
@@ -228,10 +228,12 @@
   }
 
   function resetBattle(){
-    stage=StageDatabase.get("prototype_battle");
-    if(!stage) throw new Error("Unknown stage: prototype_battle");
+    const requestedStageId=window.CardTacticsBattleSetup?.stageId||"prototype_battle";
+    stage=StageDatabase.get(requestedStageId);
+    if(!stage) throw new Error(`Unknown stage: ${requestedStageId}`);
     stageState=StageEngine.create(stage.scriptId);
     map=createMap();
+    cores=(stage.cores||[]).map(core=>({...core,hp:Number(core.hp??core.maxHp??0),maxHp:Number(core.maxHp??core.hp??0)}));
     environmentState=window.EnvironmentEngine?EnvironmentEngine.create(stage.environment||{}):null;
     units=[];
     unitSerial=0;
@@ -308,41 +310,47 @@
     return team===TEAM.PLAYER?"PLAYER":team===TEAM.ENEMY?"ENEMY":null;
   }
 
-  function resolveDeploymentPointCapture(unit){
-    if(!unit?.alive)return null;
-    const owner=captureOwnerForTeam(unit.team);
-    if(!owner)return null;
-
-    const point=DeploymentEngine.points(stage).find(point=>
-      (point.captureTiles||[]).some(tile=>tile.x===unit.x&&tile.y===unit.y)
-    );
-    if(!point||point.owner===owner)return null;
-
-    const previousOwner=point.owner;
-    if(!DeploymentEngine.capture(stage,point.id,owner))return null;
-
+  function coreForOwner(owner){return cores.find(core=>core.owner===owner)||null;}
+  function enemyOwner(owner){return owner==="PLAYER"?"ENEMY":"PLAYER";}
+  function coreAt(x,y){return cores.find(core=>core.hp>0&&core.x===x&&core.y===y)||null;}
+  function capturePointForUnit(unit){return DeploymentEngine.pointAt(stage,unit?.x,unit?.y);}
+  function canUnitCapture(unit){
+    const point=capturePointForUnit(unit);
+    return !!point&&DeploymentEngine.canCapture({stage,units,unit,point});
+  }
+  function damageCore(owner,damage,source){
+    const core=coreForOwner(owner);if(!core||core.hp<=0)return 0;
+    const dealt=Math.min(core.hp,Math.max(0,Math.round(Number(damage||0))));
+    core.hp=Math.max(0,core.hp-dealt);
+    pushLog(`${source} → ${core.name}｜${dealt} 傷害｜CORE HP ${core.hp}/${core.maxHp}。`,"BATTLE");
+    checkMatchEnd();return dealt;
+  }
+  function executeCapture(unit){
+    if(!unit?.alive||unit.acted)return false;
+    const point=capturePointForUnit(unit);
+    if(!point||!DeploymentEngine.canCapture({stage,units,unit,point}))return false;
+    const owner=captureOwnerForTeam(unit.team),previousOwner=point.owner;
+    if(!DeploymentEngine.capture(stage,point.id,owner))return false;
     const sideName=owner==="PLAYER"?"我方":"敵方";
-    const previousName=previousOwner==="NEUTRAL"?"中立":previousOwner==="PLAYER"?"我方":"敵方";
-    pushLog(`${sideName}佔領「${point.name}」｜${previousName} → ${sideName}。`,"SYSTEM");
-
-    if(owner==="PLAYER"){
-      pushLog(`「${point.name}」部署區已解鎖；下一次卡牌階段可由此部署角色。`,"SYSTEM");
-    }else if(previousOwner==="PLAYER"){
-      pushLog(`「${point.name}」已失去我方部署權。`,"SYSTEM");
-    }
-
-    stageEvent({
-      type:"DEPLOYMENT_POINT_CAPTURED",
-      pointId:point.id,
-      owner,
-      previousOwner,
-      unitId:unit.id,
-      characterId:unit.character.id,
-      x:unit.x,
-      y:unit.y
-    });
-    window.dispatchEvent(new CustomEvent("cardtactics:state"));
-    return point;
+    pushLog(`${unit.character.name} 佔領「${point.name}」｜${previousOwner} → ${owner}。`,"SYSTEM");
+    const damage=Number(stage.captureDamage||0);
+    if(damage>0)damageCore(enemyOwner(owner),damage,`${point.name} Core 砲擊`);
+    stageEvent({type:"DEPLOYMENT_POINT_CAPTURED",pointId:point.id,owner,previousOwner,unitId:unit.id,characterId:unit.character.id,x:unit.x,y:unit.y});
+    unit.moved=true;unit.acted=true;unit.waited=true;mode="inspect";
+    window.dispatchEvent(new CustomEvent("cardtactics:state"));render();return true;
+  }
+  function coreTargetSkills(unit,core){
+    if(!unit||!core||core.hp<=0)return[];
+    const target={x:core.x,y:core.y,team:unit.team===TEAM.PLAYER?TEAM.ENEMY:TEAM.PLAYER,alive:true};
+    return SkillDatabase.list(unit.character.skills).filter(skill=>skill.category==="ATTACK"&&targetType(skill)==="SINGLE"&&canUseSkill(unit,skill)&&TacticalEngine.canTarget(map,unit,target,skill));
+  }
+  function executeCoreAttack(unit,core,skill){
+    if(!unit?.alive||unit.acted||!core||!coreTargetSkills(unit,core).some(s=>s.id===skill.id))return false;
+    consumeSkill(unit,skill);skill=effectiveSkill(unit,skill);
+    const stat=skill.attackType==="MAGIC"?Number(unit.character.combat.matk||unit.character.combat.atk||0):Number(unit.character.combat.atk||0);
+    const raw=Math.max(1,Math.round(stat*Number(skill.power||1)-Number(core.defense||30)));
+    damageCore(core.owner,raw,`${unit.character.name}【${skill.name}】`);
+    unit.moved=true;unit.acted=true;unit.waited=true;selectedSkill=null;mode="inspect";render();return true;
   }
 
   function applyEnvironmentHazardToUnit(unit,{reason="環境"}={}){
@@ -376,7 +384,6 @@
       y:unit.y,
       team:unit.team===TEAM.PLAYER?"PLAYER":"ENEMY"
     });
-    resolveDeploymentPointCapture(unit);
     applyEnvironmentHazardToUnit(unit,{reason:"踏入燃燒區"});
   }
 
@@ -468,6 +475,12 @@
   }
 
   function checkMatchEnd(){
+    if(stage?.ruleset==="CORE_CAPTURE"){
+      const playerCore=coreForOwner("PLAYER"),enemyCore=coreForOwner("ENEMY");
+      if(enemyCore&&enemyCore.hp<=0){phase=PHASE.ENDED;matchResult="VICTORY";clearSelection();clearEnemyReaction();pushLog(`Round ${round}｜VICTORY！敵方 Core 已被摧毀。`,"SYSTEM");return true;}
+      if(playerCore&&playerCore.hp<=0){phase=PHASE.ENDED;matchResult="DEFEAT";clearSelection();clearEnemyReaction();pushLog(`Round ${round}｜DEFEAT！我方 Core 已被摧毀。`,"SYSTEM");return true;}
+      return false;
+    }
     if(!sideCanStillField(TEAM.ENEMY)){
       phase=PHASE.ENDED;
       matchResult="VICTORY";
@@ -558,11 +571,17 @@
   }
   function enemyMovePath(enemy){
     if(enemy.moved||!enemy.alive)return [];
-    const players=living(TEAM.PLAYER);if(!players.length)return [];
+    const players=living(TEAM.PLAYER);
+    const objectives=[...players.map(p=>({x:p.x,y:p.y}))];
+    if(stage?.ruleset==="CORE_CAPTURE"){
+      DeploymentEngine.points(stage).filter(p=>p.capturable!==false&&p.owner!=="ENEMY").forEach(p=>(p.captureTiles||[]).forEach(t=>objectives.push(t)));
+      const core=coreForOwner("PLAYER");if(core)objectives.push({x:core.x,y:core.y});
+    }
+    if(!objectives.length)return [];
     const reachable=TacticalEngine.reachable(map,units,enemy);if(!reachable.size)return [];
     let best=null;
     reachable.forEach((cost,key)=>{
-      const [x,y]=key.split(",").map(Number),nearest=Math.min(...players.map(p=>Math.abs(x-p.x)+Math.abs(y-p.y)));
+      const [x,y]=key.split(",").map(Number),nearest=Math.min(...objectives.map(p=>Math.abs(x-p.x)+Math.abs(y-p.y)));
       if(!best||nearest<best.nearest||(nearest===best.nearest&&cost<best.cost))best={x,y,nearest,cost};
     });
     return best?TacticalEngine.pathTo(map,units,enemy,best.x,best.y)||[]:[];
@@ -625,6 +644,8 @@
 
     showEnemyStep("THINK",`AI 思考｜${enemy.character.name}`,{unitId:enemy.id});
     afterEnemyStep(()=>{
+      if(stage?.ruleset==="CORE_CAPTURE"&&canUnitCapture(enemy)){executeCapture(enemy);afterEnemyStep(continueEnemyPhase,300);return;}
+      if(stage?.ruleset==="CORE_CAPTURE"){const pc=coreForOwner("PLAYER"),skills=coreTargetSkills(enemy,pc);if(skills.length){executeCoreAttack(enemy,pc,skills[0]);afterEnemyStep(continueEnemyPhase,350);return;}}
       let attack=chooseEnemyAttack(enemy);
       if(attack){
         showEnemyStep("ATTACK",`AI 決策｜${enemy.character.name} → ${attack.defender.character.name}｜${attack.skill.name}`,{unitId:enemy.id});
@@ -637,6 +658,8 @@
       const path=enemyMovePath(enemy);
       if(path.length)showEnemyStep("MOVE_PLAN",`AI 決策｜${enemy.character.name} 移動 ${path.length} 格`,{unitId:enemy.id});
       afterEnemyStep(()=>animateEnemyMove(enemy,path,()=>{
+        if(stage?.ruleset==="CORE_CAPTURE"&&canUnitCapture(enemy)){executeCapture(enemy);afterEnemyStep(continueEnemyPhase,300);return;}
+        if(stage?.ruleset==="CORE_CAPTURE"){const pc=coreForOwner("PLAYER"),skills=coreTargetSkills(enemy,pc);if(skills.length){executeCoreAttack(enemy,pc,skills[0]);afterEnemyStep(continueEnemyPhase,350);return;}}
         attack=chooseEnemyAttack(enemy);
         if(attack){
           showEnemyStep("ATTACK",`AI 決策｜移動後使用 ${attack.skill.name}`,{unitId:enemy.id});
@@ -1016,11 +1039,13 @@
     map.tiles.forEach(tile=>{
       const cell=document.createElement("div");
       const unit=unitAt(tile.x,tile.y);
+      const core=coreAt(tile.x,tile.y);
 
       cell.className="tile "+tile.terrain.toLowerCase();
       const capturePoint=DeploymentEngine.points(stage).find(point=>
         (point.captureTiles||[]).some(t=>t.x===tile.x&&t.y===tile.y)
       );
+      if(core){cell.classList.add("core-tile");cell.dataset.coreOwner=core.owner;}
       if(capturePoint){
         cell.classList.add("capture-point");
         cell.dataset.captureOwner=capturePoint.owner;
@@ -1044,7 +1069,8 @@
           const visual=unit.character.visualId?VisualDatabase.get("characters",unit.character.visualId):null;
           const art=visual?.tactical?`<img src="${visual.tactical}" alt="" onerror="this.style.display='none'">`:"";
           return `<div class="unit ${unit.team===TEAM.PLAYER?"player":"enemy"}${finishedClass}">${art}${shortName(unit.character.name)}<br>${unit.hp}</div>`;
-        })():""}`;
+        })():""}`+
+        `${core?`<div class="battle-core ${core.owner==="PLAYER"?"player":"enemy"}">CORE<br>${core.hp}/${core.maxHp}</div>`:""}`;
 
       cell.onclick=()=>handleTileClick(tile,unit,reachable,targets);
       battlefield.appendChild(cell);
@@ -1551,6 +1577,15 @@
         tacticalInfo.textContent+="\n可直接點亮起的格子移動，或直接選擇下方指令。";
       }
 
+      if(stage?.ruleset==="CORE_CAPTURE"&&canUnitCapture(selected)){
+        const point=capturePointForUnit(selected);
+        addActionButton(`佔領｜${point.name}`,()=>executeCapture(selected));
+      }
+      if(stage?.ruleset==="CORE_CAPTURE"){
+        const enemyCore=coreForOwner("ENEMY"),coreSkills=coreTargetSkills(selected,enemyCore);
+        if(coreSkills.length)addActionButton("攻擊敵方 Core",()=>{mode="core-attack-menu";render();});
+      }
+
       addActionButton("攻擊",()=>{
         selectedSkill=null;
         mode="attack-menu";
@@ -1578,6 +1613,13 @@
         render();
       });
       return;
+    }
+
+    if(mode==="core-attack-menu"){
+      const enemyCore=coreForOwner("ENEMY"),skills=coreTargetSkills(selected,enemyCore);
+      tacticalInfo.textContent+=`\n敵方 Core｜HP ${enemyCore?.hp||0}/${enemyCore?.maxHp||0}｜選擇攻擊方式。`;
+      skills.forEach(skill=>addActionButton(`${skill.name}｜${resourceLabel(selected,skill)}`,()=>executeCoreAttack(selected,enemyCore,skill)));
+      addActionButton("返回",()=>{mode="command";render();});return;
     }
 
     const allSkills=SkillDatabase.list(selected.character.skills);
@@ -1692,6 +1734,8 @@
     getEnemyCardState:()=>enemyCardState,
     getEnemyPresentation:()=>({...enemyView}),
     getBattleMap:()=>map,
+    getStage:()=>stage,
+    getCores:()=>cores.map(core=>({...core})),
     getPhase:()=>phase,
     getPendingCard:()=>pendingCard,
     getActionMenuAnchor:()=>phase===PHASE.PLAYER&&selected&&!commandPanelCollapsed&&mode!=="support-select"

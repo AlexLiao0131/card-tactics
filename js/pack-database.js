@@ -22,6 +22,20 @@ window.PACK_PRODUCTS={
     },
     fallback:["imperial_swordsman_card","imperial_spearman_card","imperial_archer_card","imperial_heavy_guard_card","imperial_hammer_card","imperial_mage_card"]
   },
+  ELF_EMPIRE_SEASON_TEST:{
+    id:"ELF_EMPIRE_SEASON_TEST",name:"精靈帝國陣營包",kind:"FACTION",season:"TEST_SEASON",
+    description:"15 張測試包｜精靈帝國普通部隊為主｜HERO Bonus 0.5%｜陣營魔法牌待正式內容加入後自動進入對應池。",
+    slots:{basic:7,mid:3,factionSpell:3,advancedRolls:2},
+    advancedChance:.25,heroBonusChance:.005,
+    pools:{
+      basic:["elf_ranger_card","elf_guard_card"],
+      mid:["elf_priest_card","elf_shapeshifter_card","elf_guard_card"],
+      advanced:["elf_shapeshifter_card"],
+      factionSpell:[],
+      hero:["reina_card"]
+    },
+    fallback:["elf_ranger_card","elf_guard_card","elf_priest_card","elf_shapeshifter_card"]
+  },
   MAGIC_SEASON_TEST:{
     id:"MAGIC_SEASON_TEST",name:"魔法卡包",kind:"MAGIC",season:"TEST_SEASON",
     description:"15 張測試包｜目前從既有泛用魔法牌池抽取；正式季度配卡待內容完成後調整。",

@@ -1,7 +1,7 @@
 (()=>{
   const $=id=>document.getElementById(id);
   const screens=[...document.querySelectorAll(".game-screen")];
-  const deck=[];
+  const deck=[...DeckEngine.getActive()];
   let activeGroup="LIVIA_SUPPLEMENT",deckReturn="menuScreen",deckCanDeploy=false,activeShopPack="IMPERIAL_SEASON_TEST";
   function show(id){screens.forEach(s=>s.classList.toggle("active",s.id===id));}
   function cardLabel(card){
@@ -40,6 +40,11 @@
     $("deckScreenTitle").textContent=deploy?"出擊牌組設定":"卡牌整理";
     renderGroupTabs();renderGroup();renderDeck();show("deckScreen");
   }
+  function replaceDeck(ids){deck.splice(0,deck.length,...DeckEngine.normalize(ids));renderDeck();renderGroup();}
+  function autoDeck(){replaceDeck(DeckEngine.autoBuild(activeGroup,{size:15}));}
+  function applyDeck(){DeckEngine.setActive(deck);$("deckCount").textContent=`目前牌組 ${deck.length} 張｜已套用`;setTimeout(renderDeck,900);}
+  function saveDeck(){const name=prompt("牌組名稱",PackDatabase.get(activeGroup)?.name||"我的牌組");if(name)DeckEngine.save(name,deck);}
+  function loadDeck(){const names=Object.keys(DeckEngine.saved());if(!names.length){alert("目前沒有已儲存牌組。");return;}const name=prompt(`輸入要載入的牌組名稱：\n${names.join("\n")}`,names[0]);if(name)replaceDeck(DeckEngine.load(name));}
   function renderShop(){
     const products=PackDatabase.products({season:"TEST_SEASON"});
     $("shopTabs").innerHTML=products.map(p=>`<button class="pack-tab ${p.id===activeShopPack?"active":""}" data-shop-pack="${p.id}">${p.name}</button>`).join("");
@@ -61,9 +66,14 @@
     }).join("");
   }
   $("pressStart").onclick=()=>{AudioManager.playBgm("assets/audio/title-theme.mp3");show("menuScreen");};
+  $("autoDeck").onclick=autoDeck;
+  $("applyDeck").onclick=applyDeck;
+  $("saveDeck").onclick=saveDeck;
+  $("loadDeck").onclick=loadDeck;
   $("menuCampaign").onclick=()=>show("campaignScreen");
   $("campaignPrototype").onclick=()=>openDeckBuilder({from:"campaignScreen",deploy:true});
   $("menuVersus").onclick=()=>show("versusScreen");
+  $("versusAi").onclick=()=>openDeckBuilder({from:"versusScreen",deploy:true});
   $("menuCards").onclick=()=>openDeckBuilder({from:"menuScreen",deploy:false});
   $("menuShop").onclick=()=>{renderShop();show("shopScreen");};
   $("menuSave").onclick=()=>show("saveScreen");
@@ -71,7 +81,8 @@
   document.querySelectorAll("[data-back]").forEach(btn=>btn.onclick=()=>show(btn.dataset.back));
   $("deckBack").onclick=()=>show(deckReturn);
   $("deployDeck").onclick=()=>{
-    window.CardTacticsBattleSetup={stageId:"prototype_battle",deck:[...deck]};
+    DeckEngine.setActive(deck);
+    window.CardTacticsBattleSetup={stageId:deckReturn==="versusScreen"?"versus_core_battle":"prototype_battle",deck:[...deck]};
     window.CardTacticsRuntime?.resetBattle?.();show("battleScreen");
   };
   $("battleBack").onclick=()=>show("menuScreen");
