@@ -1213,7 +1213,8 @@
     button.className="action-button";
     button.disabled=disabled;
     button.onclick=onClick;
-    skillBar.appendChild(button);
+    const engagementActions=skillBar.querySelector(".engagement-actions");
+    (engagementActions||skillBar).appendChild(button);
   }
 
   function addCommandPanelClose(){
@@ -1258,6 +1259,9 @@
     stage.appendChild(center);
     stage.appendChild(appendEngagementUnit(enemy,"enemy"));
     skillBar.appendChild(stage);
+    const actions=document.createElement("div");
+    actions.className="engagement-actions";
+    skillBar.appendChild(actions);
   }
 
   function renderSupportSelection(){
@@ -1298,7 +1302,7 @@
         row.appendChild(button);
       });
 
-      skillBar.appendChild(row);
+      (skillBar.querySelector(".engagement-actions")||skillBar).appendChild(row);
     });
 
     addActionButton("開始交戰",confirmEngagement);
