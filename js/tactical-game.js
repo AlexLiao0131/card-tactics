@@ -1088,6 +1088,7 @@
     }
 
     if(selected&&!selected.acted&&mode==="command"&&!selected.moved&&!unit&&reachable.has(tile.x+","+tile.y)){
+      commandPanelCollapsed=true;
       const path=TacticalEngine.pathTo(map,units,selected,tile.x,tile.y);
       const moveResult=traverseUnitPath(selected,path,{kind:"UNIT"});
       selected.moved=true;
@@ -1100,6 +1101,7 @@
       prepareAttack(selected,unit,selectedSkill);
       return;
     }
+    if(selected&&!selected.acted&&mode==="command"&&!unit)commandPanelCollapsed=true;
     render();
   }
 
@@ -1119,11 +1121,6 @@
       target:defender,
       canUseSkill
     });
-
-    if(!candidates.length){
-      executeEngagement(attacker,defender,skill,[]);
-      return;
-    }
 
     pendingEngagement={attacker,defender,skill,candidates};
     supportSelection=new Map();
@@ -1232,16 +1229,40 @@
     skillBar.appendChild(button);
   }
 
-  function renderCollapsedCommandButton(){
-    addActionButton("作戰選單",()=>{
-      commandPanelCollapsed=false;
-      render();
-    });
-    skillBar.classList.add("command-panel-collapsed");
+  function renderCollapsedCommandButton(){skillBar.classList.add("command-panel-collapsed");}
+
+  function appendEngagementUnit(unit,side){
+    const max=Math.max(1,Number(unit?.character?.combat?.hp||unit?.hp||1));
+    const hp=Math.max(0,Number(unit?.hp||0));
+    const pct=Math.max(0,Math.min(100,hp/max*100));
+    const card=document.createElement("div");
+    card.className=`engagement-unit engagement-${side}`;
+    card.innerHTML=
+      `<div class="engagement-figure"><span>${shortName(unit.character.name)}</span></div>`+
+      `<strong>${unit.character.name}</strong>`+
+      `<div class="engagement-hp"><i style="width:${pct}%"></i></div>`+
+      `<small>HP ${hp} / ${max}</small>`;
+    return card;
+  }
+
+  function appendEngagementHeader(attacker,defender,skill){
+    skillBar.classList.add("engagement-overlay");
+    const stage=document.createElement("div");
+    stage.className="engagement-stage";
+    const player=attacker.team===TEAM.PLAYER?attacker:defender;
+    const enemy=attacker.team===TEAM.ENEMY?attacker:defender;
+    stage.appendChild(appendEngagementUnit(player,"player"));
+    const center=document.createElement("div");
+    center.className="engagement-versus";
+    center.innerHTML=`<b>VS</b><span>${skill?.name||"交戰"}</span>`;
+    stage.appendChild(center);
+    stage.appendChild(appendEngagementUnit(enemy,"enemy"));
+    skillBar.appendChild(stage);
   }
 
   function renderSupportSelection(){
     const {attacker,defender,skill,candidates}=pendingEngagement;
+    appendEngagementHeader(attacker,defender,skill);
 
     tacticalInfo.textContent=
       `交戰準備｜${attacker.character.name} → ${defender.character.name}\n`+
@@ -1290,6 +1311,7 @@
 
   function renderEnemyReaction(){
     const {attacker,defender,skill}=pendingEnemyAttack;
+    appendEngagementHeader(attacker,defender,skill);
     const prep=BattleResolution.prepareSingleTargetReaction({
       defender,
       attacker,
@@ -1312,6 +1334,7 @@
 
   function renderCounterSelection(){
     const {attacker,defender,skill}=pendingEnemyAttack;
+    appendEngagementHeader(attacker,defender,skill);
     const prep=BattleResolution.prepareSingleTargetReaction({
       defender,
       attacker,
@@ -1338,6 +1361,7 @@
 
   function renderDefenseSelection(){
     const {attacker,defender,skill}=pendingEnemyAttack;
+    appendEngagementHeader(attacker,defender,skill);
     const prep=BattleResolution.prepareSingleTargetReaction({
       defender,
       attacker,
@@ -1364,6 +1388,7 @@
 
   function renderGuardSelection(){
     const {attacker,defender,skill}=pendingEnemyAttack;
+    appendEngagementHeader(attacker,defender,skill);
     const guards=guardCandidates();
 
     tacticalInfo.textContent=
@@ -1388,6 +1413,7 @@
 
   function renderGuardReaction(){
     const {attacker,defender,skill}=pendingEnemyAttack;
+    appendEngagementHeader(attacker,defender,skill);
     const guardian=selectedGuardian;
     if(!guardian?.alive){
       selectedGuardian=null;
@@ -1442,7 +1468,7 @@
 
   function renderPanel(){
     skillBar.innerHTML="";
-    skillBar.classList.remove("enemy-reaction-panel","command-panel-collapsed");
+    skillBar.classList.remove("enemy-reaction-panel","command-panel-collapsed","engagement-overlay");
 
     if(matchResult){
       tacticalInfo.textContent=matchResult==="VICTORY"
@@ -1662,6 +1688,8 @@
     getBattleMap:()=>map,
     getPhase:()=>phase,
     getPendingCard:()=>pendingCard,
+    getActionMenuAnchor:()=>phase===PHASE.PLAYER&&selected&&!commandPanelCollapsed&&mode!=="support-select"
+      ?{x:selected.x,y:selected.y}:null,
     playCard:selectCardForPlay,
     endCardPhase,
     cancelCard:()=>{pendingCard=null;render();},

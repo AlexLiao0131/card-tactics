@@ -420,6 +420,15 @@ function renderScene(scene,{resetCamera=false}={}){
     cam.centerOn(N.worldW/2,centerY);
     cam.__ctReady=true;
   }
+  syncActionMenuAnchor();
+}
+function syncActionMenuAnchor(){
+  const bar=document.getElementById("skillBar"),snapshot=BattleStateAdapter.snapshot(),anchor=window.CardTacticsRuntime?.getActionMenuAnchor?.();
+  if(!bar||!sceneRef||!snapshot||!anchor){if(bar){bar.style.removeProperty("--menu-x");bar.style.removeProperty("--menu-y");}return;}
+  const tile=tileAt(snapshot,anchor.x,anchor.y);if(!tile)return;
+  const N=normalized(snapshot),p=worldPoint(snapshot,tile,N),cam=sceneRef.cameras.main;
+  bar.style.setProperty("--menu-x",`${Math.round((p.x-cam.worldView.x)*cam.zoom)}px`);
+  bar.style.setProperty("--menu-y",`${Math.round((p.y-(projectionMode==="TOP"?20:CONFIG.unitLift)-cam.worldView.y)*cam.zoom)}px`);
 }
 function nearestTile(wx,wy){
   const snapshot=BattleStateAdapter.snapshot();if(!snapshot)return null;
@@ -461,7 +470,7 @@ function ensureGame(){
         // Portrait interaction is intentionally vertical-first. Horizontal remains available only as a small correction.
         const xFactor=host.clientHeight>=host.clientWidth?.18:1;
         this.cameras.main.scrollX=drag.scrollX-dx/z*xFactor;
-        this.cameras.main.scrollY=drag.scrollY-dy/z;
+        this.cameras.main.scrollY=drag.scrollY-dy/z;syncActionMenuAnchor();
       });
       this.input.on("pointerup",p=>{
         if(drag&&!drag.moved){
@@ -477,7 +486,7 @@ function ensureGame(){
         drag=null;if(!(this.input.pointer1.isDown&&this.input.pointer2.isDown))pinch=null;
       });
       this.input.on("wheel",(_p,_go,_dx,dy)=>{
-        const c=this.cameras.main;c.setZoom(Phaser.Math.Clamp(c.zoom*(dy>0?.9:1.1),CONFIG.minZoom,CONFIG.maxZoom));
+        const c=this.cameras.main;c.setZoom(Phaser.Math.Clamp(c.zoom*(dy>0?.9:1.1),CONFIG.minZoom,CONFIG.maxZoom));syncActionMenuAnchor();
       });
     }}
   });
