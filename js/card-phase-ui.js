@@ -4,20 +4,7 @@
   let previewId=null,mulliganSelected=new Set();
 
   function kind(card){return card.type==="CHARACTER"?(card.unitType==="HERO"?"英雄角色卡":"角色卡"):"卡牌魔法";}
-  function ensureStyle(){
-    if(document.getElementById("ctMulliganStyle"))return;
-    const s=document.createElement("style");s.id="ctMulliganStyle";s.textContent=`
-      .mulligan-guide{position:absolute;z-index:78;left:50%;bottom:128px;transform:translateX(-50%);display:flex;gap:8px;align-items:center;padding:7px 10px;border:1px solid #8a7958;border-radius:9px;background:#081018ed;font-size:11px;white-space:nowrap;pointer-events:auto}
-      .mulligan-guide span{color:#cbd4df}.mulligan-actions{position:absolute;z-index:79;left:50%;bottom:92px;transform:translateX(-50%);display:flex;gap:7px;pointer-events:auto}.mulligan-actions button{width:auto;padding:7px 10px}
-      .fan-card.mulligan-selected{outline:3px solid #e2b45d;transform:translateY(-28px) rotate(0);z-index:12}
-      #cardPhasePanel.targeting-mode{height:52px!important}
-      #cardPhasePanel.targeting-mode .fan-hand,#cardPhasePanel.targeting-mode .battle-resource,#cardPhasePanel.targeting-mode .battle-deck-count,#cardPhasePanel.targeting-mode .card-phase-compact-actions,#cardPhasePanel.targeting-mode .mulligan-guide,#cardPhasePanel.targeting-mode .mulligan-actions{display:none!important}
-      #cardPhasePanel.targeting-mode .card-targeting-bar{bottom:4px}
-      @media(max-width:700px){.mulligan-guide{bottom:112px;max-width:90vw;font-size:9px}.mulligan-actions{bottom:78px}.mulligan-actions button{font-size:10px;padding:6px 8px}}
-    `;document.head.appendChild(s);
-  }
   function render(){
-    ensureStyle();
     const state=CardTacticsRuntime.getCardState();if(!state)return;
     const phase=CardTacticsRuntime.getPhase(),pending=CardTacticsRuntime.getPendingCard();
     const enemyState=CardTacticsRuntime.getEnemyCardState?.(),enemyView=CardTacticsRuntime.getEnemyPresentation?.();
