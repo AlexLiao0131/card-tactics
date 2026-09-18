@@ -10,6 +10,7 @@
   let pendingEngagement=null;
   let supportSelection=new Map();
   let pendingCopySkill=null;
+  let pendingMove=null;
 
   // Engagement Step 4: enemy SINGLE attacks pause here until the player chooses a reaction.
   let enemyQueue=[];
@@ -286,6 +287,7 @@
     selectedSkillVariant=null;
     pendingEngagement=null;
     supportSelection=new Map();
+    pendingMove=null;
     enemyQueue=[];
     pendingEnemyAttack=null;
     pendingReactionType=null;
@@ -339,6 +341,7 @@
   }
   function executeCapture(unit){
     if(!unit?.alive||unit.acted)return false;
+    commitPendingMove(unit);
     const point=capturePointForUnit(unit);
     if(!point||!DeploymentEngine.canCapture({stage,units,unit,point}))return false;
     const owner=captureOwnerForTeam(unit.team),previousOwner=point.owner;
@@ -351,18 +354,27 @@
     unit.moved=true;unit.acted=true;unit.waited=true;mode="inspect";
     window.dispatchEvent(new CustomEvent("cardtactics:state"));render();return true;
   }
-  function coreTargetSkills(unit,core){
-    if(!unit||!core||core.hp<=0)return[];
-    const target={x:core.x,y:core.y,team:unit.team===TEAM.PLAYER?TEAM.ENEMY:TEAM.PLAYER,alive:true};
-    return SkillDatabase.list(window.EffectEngine?EffectEngine.skillIds(unit):unit.character.skills).filter(skill=>skill.category==="ATTACK"&&targetType(skill)==="SINGLE"&&canUseSkill(unit,skill)&&TacticalEngine.canTarget(map,unit,target,skill));
+  function coreCombatTarget(core,attackerTeam){
+    if(!core||core.hp<=0)return null;
+    return {kind:"CORE",id:`CORE:${core.owner}`,x:core.x,y:core.y,team:attackerTeam===TEAM.PLAYER?TEAM.ENEMY:TEAM.PLAYER,alive:true,core};
   }
-  function executeCoreAttack(unit,core,skill){
-    if(!unit?.alive||unit.acted||!core||!coreTargetSkills(unit,core).some(s=>s.id===skill.id))return false;
+  function targetableEntities(unit,skill){
+    const entities=[...units];
+    if(stage?.ruleset==="CORE_CAPTURE"){
+      const owner=unit.team===TEAM.PLAYER?"ENEMY":"PLAYER",core=coreForOwner(owner),target=coreCombatTarget(core,unit.team);
+      if(target)entities.push(target);
+    }
+    return entities.filter(target=>TacticalEngine.canTarget(map,unit,target,skill));
+  }
+  function resolveDirectTargetAttack(unit,target,skill){
+    if(!unit?.alive||unit.acted||!target?.alive||!TacticalEngine.canTarget(map,unit,target,skill))return false;
+    if(target.kind!=="CORE")return false;
     consumeSkill(unit,skill);skill=effectiveSkill(unit,skill);
     const stat=skill.attackType==="MAGIC"?Number(unit.character.combat.matk||unit.character.combat.atk||0):Number(unit.character.combat.atk||0);
-    const raw=Math.max(1,Math.round(stat*Number(skill.power||1)-Number(core.defense||30)));
-    damageCore(core.owner,raw,`${unit.character.name}【${skill.name}】`);
-    unit.moved=true;unit.acted=true;unit.waited=true;selectedSkill=null;mode="inspect";render();return true;
+    const raw=Math.max(1,Math.round(stat*Number(skill.power||1)-Number(target.core.defense||30)));
+    damageCore(target.core.owner,raw,`${unit.character.name}【${skill.name}】`);
+    commitPendingMove(unit);
+    unit.moved=true;unit.acted=true;unit.waited=true;selectedSkill=null;selectedSkillVariant=null;mode="inspect";render();return true;
   }
 
   function applyEnvironmentHazardToUnit(unit,{reason="環境"}={}){
@@ -1043,7 +1055,7 @@
 
     const targets=
       selected&&phase===PHASE.PLAYER&&!selected.acted&&mode==="attack"&&selectedSkill&&targetType(selectedSkill)==="SINGLE"
-        ?TacticalEngine.targets(map,units,selected,selectedSkill)
+        ?targetableEntities(selected,selectedSkill)
         :[];
     const mapTargets=
       selected&&phase===PHASE.PLAYER&&!selected.acted&&mode==="map-target"&&selectedSkill
@@ -1068,7 +1080,7 @@
       if(reachable.has(tile.x+","+tile.y)) cell.classList.add("reachable");
       if(pendingCard&&phase===PHASE.CARD&&CardDatabase.isCharacter(pendingCard)&&DeploymentEngine.canDeploy({stage,map,units,owner:"PLAYER",x:tile.x,y:tile.y})) cell.classList.add("deployable");
       if(pendingCard&&phase===PHASE.CARD&&CardDatabase.isSpell(pendingCard)) cell.classList.add("attackable");
-      if(unit&&targets.includes(unit)) cell.classList.add("attackable");
+      if((unit&&targets.includes(unit))||(core&&targets.some(target=>target.kind==="CORE"&&target.core===core))) cell.classList.add("attackable");
       if(mapTargets.includes(tile)) cell.classList.add("attackable");
       if(unit===selected) cell.classList.add("selected");
       if(inspectedTile===tile) cell.classList.add("tile-inspected");
@@ -1086,7 +1098,7 @@
         })():""}`+
         `${core?`<div class="battle-core ${core.owner==="PLAYER"?"player":"enemy"}">CORE<br>${core.hp}/${core.maxHp}</div>`:""}`;
 
-      cell.onclick=()=>handleTileClick(tile,unit,reachable,targets);
+      cell.onclick=()=>handleTileClick(tile,unit,core,reachable,targets);
       battlefield.appendChild(cell);
     });
 
@@ -1101,7 +1113,7 @@
     cancelSelect.disabled=(!selected&&!pendingCard)||!!matchResult;
   }
 
-  function handleTileClick(tile,unit,reachable,targets){
+  function handleTileClick(tile,unit,core,reachable,targets){
     inspectedTile=tile;
     if(matchResult){render();return;}
     if(phase===PHASE.CARD){
@@ -1116,12 +1128,16 @@
       return;
     }
 
-    if(selected&&!selected.acted&&mode==="attack"&&unit&&targets.includes(unit)){
-      prepareAttack(selected,unit,selectedSkill);
-      return;
+    if(selected&&!selected.acted&&mode==="attack"){
+      const target=unit&&targets.includes(unit)?unit:(core?targets.find(candidate=>candidate.kind==="CORE"&&candidate.core===core):null);
+      if(target){
+        if(target.kind==="CORE")resolveDirectTargetAttack(selected,target,selectedSkill);else prepareAttack(selected,target,selectedSkill);
+        return;
+      }
     }
 
     if(unit&&unit.team===TEAM.PLAYER){
+      if(selected&&selected!==unit)commitPendingMove(selected);
       commandPanelCollapsed=false;
       selected=unit;
       selectedSkill=null;
@@ -1134,9 +1150,11 @@
     if(selected&&!selected.acted&&mode==="command"&&!selected.moved&&!unit&&reachable.has(tile.x+","+tile.y)){
       commandPanelCollapsed=true;
       const path=TacticalEngine.pathTo(map,units,selected,tile.x,tile.y);
+      beginPendingMove(selected);
       const moveResult=traverseUnitPath(selected,path,{kind:"UNIT"});
       selected.moved=true;
-      pushLog(`${selected.character.name} ${moveResult.completed?"移動完成":"移動途中受到環境影響而中斷"}。`);
+      if(!moveResult.completed)commitPendingMove(selected);
+      pushLog(`${selected.character.name} ${moveResult.completed?"移動完成，可在其他行動前取消移動":"移動途中受到環境影響而中斷"}。`);
       render();
       return;
     }
@@ -1145,7 +1163,24 @@
     render();
   }
 
+  function beginPendingMove(unit){pendingMove={unitId:unit.id,x:unit.x,y:unit.y,facing:unit.facing};}
+  function commitPendingMove(unit){if(pendingMove?.unitId===unit?.id)pendingMove=null;}
+  function cancelPendingMove(){
+    if(!selected||pendingMove?.unitId!==selected.id||selected.acted)return false;
+    selected.x=pendingMove.x;selected.y=pendingMove.y;if(pendingMove.facing)selected.facing=pendingMove.facing;
+    selected.moved=false;pendingMove=null;commandPanelCollapsed=false;mode="command";
+    pushLog(`${selected.character.name} 取消移動，返回原位置。`,"SYSTEM");render();window.dispatchEvent(new CustomEvent("cardtactics:state"));return true;
+  }
+  function backFromTargeting(){
+    if(!selectedSkill)return false;
+    const previousSkill=selectedSkill;
+    if(previousSkill?.baseSkillId){selectedSkill=SkillDatabase.get(previousSkill.baseSkillId);selectedSkillVariant=null;mode="variant-menu";}
+    else{selectedSkill=null;selectedSkillVariant=null;mode=previousSkill.category!=="ATTACK"?"special-menu":"attack-menu";}
+    render();return true;
+  }
+
   function finishActiveSkill(attacker){
+    commitPendingMove(attacker);
     attacker.moved=true;attacker.acted=true;attacker.waited=true;
     selectedSkill=null;selectedSkillVariant=null;mode="inspect";
     if(checkMatchEnd()){render();return true;}
@@ -1204,6 +1239,7 @@
 
   function prepareAttack(attacker,defender,skill){
     if(!canUseSkill(attacker,skill)) return;
+    commitPendingMove(attacker);
     if(skill.approach&&!approachForSkill(attacker,defender,skill)){pushLog(`${skill.name} 無合法衝鋒路徑。`,"SYSTEM");render();return;}
     if(skill.effects||skill.relationEffects||skill.bloodAction){executeEffectSkill(attacker,defender,skill);return;}
     skill=effectiveSkill(attacker,skill);
@@ -1649,17 +1685,15 @@
       addCommandPanelClose();
       if(!selected.moved){
         tacticalInfo.textContent+="\n可直接點亮起的格子移動，或直接選擇下方指令。";
+      }else if(pendingMove?.unitId===selected.id){
+        tacticalInfo.textContent+="\n移動尚未確定；執行其他行動前可取消。";
+        addActionButton("取消移動",cancelPendingMove);
       }
 
       if(stage?.ruleset==="CORE_CAPTURE"&&canUnitCapture(selected)){
         const point=capturePointForUnit(selected);
         addActionButton(`佔領｜${point.name}`,()=>executeCapture(selected));
       }
-      if(stage?.ruleset==="CORE_CAPTURE"){
-        const enemyCore=coreForOwner("ENEMY"),coreSkills=coreTargetSkills(selected,enemyCore);
-        if(coreSkills.length)addActionButton("攻擊敵方 Core",()=>{mode="core-attack-menu";render();});
-      }
-
       addActionButton("攻擊",()=>{
         selectedSkill=null;
         mode="attack-menu";
@@ -1683,18 +1717,13 @@
       });
 
       addActionButton("待機",()=>{
+        commitPendingMove(selected);
         finishUnit(selected,"待機，行動結束。",{waited:true});
         render();
       });
       return;
     }
 
-    if(mode==="core-attack-menu"){
-      const enemyCore=coreForOwner("ENEMY"),skills=coreTargetSkills(selected,enemyCore);
-      tacticalInfo.textContent+=`\n敵方 Core｜HP ${enemyCore?.hp||0}/${enemyCore?.maxHp||0}｜選擇攻擊方式。`;
-      skills.forEach(skill=>addActionButton(`${skill.name}｜${resourceLabel(selected,skill)}`,()=>executeCoreAttack(selected,enemyCore,skill)));
-      addActionButton("返回",()=>{mode="command";render();});return;
-    }
 
     const allSkills=SkillDatabase.list(window.EffectEngine?EffectEngine.skillIds(selected):selected.character.skills);
     const isSpecial=skill=>skill.category!=="ATTACK";
@@ -1767,31 +1796,13 @@
     if(mode==="map-target"&&selectedSkill){
       const range=TacticalEngine.range(selectedSkill);
       tacticalInfo.textContent+=`\n${selectedSkill.name}｜射程 ${range.min}-${range.max}｜AOE ${selectedSkill.radius||0}｜請點選亮起的地圖格。`;
-      addActionButton("返回",()=>{
-        selectedSkill=SkillDatabase.get(selectedSkill.baseSkillId||selectedSkill.id);
-        selectedSkillVariant=null;
-        mode="variant-menu";
-        render();
-      });
       return;
     }
 
     if(mode==="attack"&&selectedSkill){
       const range=TacticalEngine.range(selectedSkill);
       tacticalInfo.textContent+=`\n${selectedSkill.name}｜射程 ${range.min}-${range.max}｜請選擇目標。`;
-      addActionButton("返回",()=>{
-        const previousSkill=selectedSkill;
-        if(previousSkill?.baseSkillId){
-          selectedSkill=SkillDatabase.get(previousSkill.baseSkillId);
-          selectedSkillVariant=null;
-          mode="variant-menu";
-        }else{
-          selectedSkill=null;
-          selectedSkillVariant=null;
-          mode=isSpecial(previousSkill)?"special-menu":"attack-menu";
-        }
-        render();
-      });
+
     }
   }
 
@@ -1806,6 +1817,8 @@
       return;
     }
     if(phase!==PHASE.PLAYER)return;
+    if(mode==="attack"||mode==="map-target"){backFromTargeting();return;}
+    if(cancelPendingMove())return;
     clearSelection();
     render();
   };
