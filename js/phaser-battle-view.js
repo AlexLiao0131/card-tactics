@@ -25,22 +25,29 @@ function edgeNeighbor(s,t,edge){
   const dir=dirs[(edge+q)%4];
   return tile(s,t.x+dir[0],t.y+dir[1]);
 }
+function shadeColor(color,factor){
+  const c=Number(color||0),r=(c>>16)&255,g=(c>>8)&255,b=c&255;
+  return (Math.max(0,Math.min(255,Math.round(r*factor)))<<16)|
+         (Math.max(0,Math.min(255,Math.round(g*factor)))<<8)|
+          Math.max(0,Math.min(255,Math.round(b*factor)));
+}
 function drawElevationEdges(g,s,t,q){
   if(projection!=="ISO")return;
-  const elevation=Number(t.elevation||0);
-  const edgeColors=[0x514a3a,0x3a352b,0x454033,0x4b4435];
-  for(let edge=0;edge<4;edge++){
+  const elevation=Number(t.elevation||0),base=terrainFill(t);
+  // In ISO projection only the two screen-facing edges are visible.
+  // Drawing all four faces made rear faces overlap neighbouring tiles and appear as black holes.
+  for(const edge of [1,2]){
     const neighbor=edgeNeighbor(s,t,edge);
     const neighborElevation=neighbor?Number(neighbor.elevation||0):0;
     const levels=elevation-neighborElevation;
     if(levels<=0)continue;
     const a=q[edge],b=q[(edge+1)%4],drop=levels*C.eh;
     const face=[a,b,{x:b.x,y:b.y+drop},{x:a.x,y:a.y+drop}];
-    g.fillStyle(edgeColors[edge],.95);path(g,face);g.fillPath();
-    g.lineStyle(1,0x25231e,.65);path(g,face);g.strokePath();
+    g.fillStyle(shadeColor(base,edge===1?.62:.50),1);path(g,face);g.fillPath();
+    g.lineStyle(1,shadeColor(base,.34),.8);path(g,face);g.strokePath();
     for(let level=1;level<levels;level++){
       const y=level*C.eh;
-      g.lineStyle(1,0x756c55,.38);
+      g.lineStyle(1,shadeColor(base,.82),.42);
       g.beginPath();g.moveTo(a.x,a.y+y);g.lineTo(b.x,b.y+y);g.strokePath();
     }
   }
@@ -137,15 +144,10 @@ function reconcileUnits(s,n){
   }
   for(const [k,v] of V.units)if(!live.has(k)){v.destroy(true);V.units.delete(k)}
 }
-function controls(){
-  let box=document.getElementById("battleViewControls");if(!box){box=document.createElement("div");box.id="battleViewControls";box.className="battle-view-controls";battleScreen.querySelector("main")?.appendChild(box)}
-  if(!box.children.length){const l=document.createElement("button"),v=document.createElement("button"),r=document.createElement("button");l.textContent="↺";r.textContent="↻";v.id="projectionToggle";v.textContent="正視圖";l.onclick=()=>{rotation=(rotation+3)%4;resync(true)};r.onclick=()=>{rotation=(rotation+1)%4;resync(true)};v.onclick=()=>{projection=projection==="ISO"?"TOP":"ISO";v.textContent=projection==="ISO"?"正視圖":"45°視角";resync(true)};box.append(l,v,r)}
-  const back=document.getElementById("battleBack");if(back&&back.parentElement!==box){back.textContent="← 主選單";box.prepend(back)}
-}
 function anchor(s,n){const bar=document.getElementById("skillBar"),a=window.CardTacticsRuntime?.getActionMenuAnchor?.();if(!bar||!scene||!a){bar?.style.removeProperty("--menu-x");bar?.style.removeProperty("--menu-y");return}const t=tile(s,a.x,a.y);if(!t)return;const p=wp(s,t,n),cam=scene.cameras.main;bar.style.setProperty("--menu-x",`${Math.round((p.x-cam.worldView.x)*cam.zoom)}px`);bar.style.setProperty("--menu-y",`${Math.round((p.y-(projection==="TOP"?20:42)-cam.worldView.y)*cam.zoom)}px`)}
 function structuralKey(s){return `${s.map.id||""}|${s.map.width}x${s.map.height}|${projection}|${rotation}`}
 function reconcile(reset=false){
-  const started=performance.now();controls();const s=snap();if(!s||!scene)return;const n=norm(s),cam=scene.cameras.main;
+  const started=performance.now();const s=snap();if(!s||!scene)return;const n=norm(s),cam=scene.cameras.main;
   if(V.structuralKey!==structuralKey(s)){V.structuralKey=structuralKey(s);reset=true}
   cam.setBounds(0,0,n.w,n.h);reconcileTiles(s,n);reconcileTerrainMarkers(s,n);reconcileObjects(s,n);reconcileEffects(s,n);reconcileCores(s,n);reconcileUnits(s,n);
   if(reset||!cam.__ready){const z=Phaser.Math.Clamp((host.clientWidth-44)/Math.max(1,n.b.width),C.minZoom,1.18);cam.setZoom(z);cam.centerOn(n.w/2,n.h/2);cam.__ready=true}
@@ -160,6 +162,22 @@ function queue(reset=false){if(queued)return;queued=true;requestAnimationFrame((
 new MutationObserver(()=>queue(true)).observe(battleScreen,{attributes:true,attributeFilter:["class"]});
 if(window.ResizeObserver)new ResizeObserver(()=>{const k=`${host.clientWidth}x${host.clientHeight}`,chg=k!==lastSize;lastSize=k;queue(chg)}).observe(host);
 window.addEventListener("cardtactics:battle-render",()=>queue(false));window.addEventListener("resize",()=>queue(true));
-window.CardTacticsBattleView={resync:()=>resync(true),diagnostics:()=>({alive:!!scene,children:scene?.children?.length||0,zoom:+(scene?.cameras?.main?.zoom||0).toFixed(2),projection,rotation,lastRenderMs,lastRevision,objects:{tiles:V.tiles.size,units:V.units.size,mapObjects:V.objects.size,terrainMarkers:V.terrainMarkers.size,cores:V.cores.size,effects:V.effects.size}})};
+window.CardTacticsBattleView={
+  resync:()=>resync(true),
+  getViewState:()=>({projection,rotation}),
+  setProjection(next){
+    const value=next==="TOP"?"TOP":"ISO";
+    if(value===projection)return false;
+    projection=value;resync(true);
+    window.dispatchEvent(new CustomEvent("cardtactics:view-change",{detail:{projection,rotation}}));
+    return true;
+  },
+  rotate(delta=1){
+    rotation=(rotation+Number(delta||0)+400)%4;resync(true);
+    window.dispatchEvent(new CustomEvent("cardtactics:view-change",{detail:{projection,rotation}}));
+    return rotation;
+  },
+  diagnostics:()=>({alive:!!scene,children:scene?.children?.length||0,zoom:+(scene?.cameras?.main?.zoom||0).toFixed(2),projection,rotation,lastRenderMs,lastRevision,objects:{tiles:V.tiles.size,units:V.units.size,mapObjects:V.objects.size,terrainMarkers:V.terrainMarkers.size,cores:V.cores.size,effects:V.effects.size}})
+};
 queue(true);
 })();
