@@ -11,6 +11,7 @@
   let supportSelection=new Map();
   let pendingCopySkill=null;
   let pendingMove=null;
+  let battleContext=null,enemyController=null;
 
   // Engagement Step 4: enemy SINGLE attacks pause here until the player chooses a reaction.
   let enemyQueue=[];
@@ -241,6 +242,7 @@
   }
 
   function resetBattle(){
+    enemyController?.reset?.();
     const requestedStageId=window.CardTacticsBattleSetup?.stageId||"prototype_battle";
     stage=StageDatabase.get(requestedStageId);
     if(!stage) throw new Error(`Unknown stage: ${requestedStageId}`);
@@ -592,192 +594,32 @@
     beginCardPhase();
   }
 
-  function distance(a,b){
-    return Math.abs(a.x-b.x)+Math.abs(a.y-b.y);
-  }
-
-  function enemySingleSkills(enemy){
-    return SkillDatabase.list(window.EffectEngine?EffectEngine.skillIds(enemy):enemy.character.skills).filter(skill=>
-      skill.target==="ENEMY" &&
-      targetType(skill)==="SINGLE" &&
-      canUseSkill(enemy,skill)
-    );
-  }
-
-  function targetsForEnemySkill(enemy,skill){
-    const r=skill.range||{min:1,max:1};
-    return living(TEAM.PLAYER).filter(target=>
-      TacticalEngine.canTarget(map,enemy,target,skill)
-    );
-  }
-
-  function chooseEnemyAttack(enemy){
-    for(const skill of enemySingleSkills(enemy)){
-      const targets=targetsForEnemySkill(enemy,skill);
-      if(targets.length){
-        targets.sort((a,b)=>a.hp-b.hp||distance(enemy,a)-distance(enemy,b));
-        return {attacker:enemy,defender:targets[0],skill};
-      }
-    }
-    return null;
-  }
-
-  function showEnemyStep(kind,message,extra={}){
-    enemyView={active:true,kind,message,...extra};
-    render();window.dispatchEvent(new CustomEvent("cardtactics:state"));
-  }
-  function afterEnemyStep(fn,ms=550){
-    if(enemyStepTimer)clearTimeout(enemyStepTimer);
-    enemyStepTimer=setTimeout(()=>{enemyStepTimer=null;fn?.();},ms);
-  }
-  function enemyMovePath(enemy){
-    if(enemy.moved||!enemy.alive)return [];
-    const players=living(TEAM.PLAYER);
-    const objectives=[...players.map(p=>({x:p.x,y:p.y}))];
-    if(stage?.ruleset==="CORE_CAPTURE"){
-      DeploymentEngine.points(stage).filter(p=>p.capturable!==false&&p.owner!=="ENEMY").forEach(p=>(p.captureTiles||[]).forEach(t=>objectives.push(t)));
-      const core=coreForOwner("PLAYER");if(core)objectives.push({x:core.x,y:core.y});
-    }
-    if(!objectives.length)return [];
-    const reachable=TacticalEngine.reachable(map,units,enemy);if(!reachable.size)return [];
-    let best=null;
-    reachable.forEach((cost,key)=>{
-      const [x,y]=key.split(",").map(Number),nearest=Math.min(...objectives.map(p=>Math.abs(x-p.x)+Math.abs(y-p.y)));
-      if(!best||nearest<best.nearest||(nearest===best.nearest&&cost<best.cost))best={x,y,nearest,cost};
-    });
-    return best?TacticalEngine.pathTo(map,units,enemy,best.x,best.y)||[]:[];
-  }
-  function animateEnemyMove(enemy,path,done){
-    const steps=[...(path||[])];
-    const next=()=>{
-      if(!steps.length||!enemy.alive){enemy.moved=true;done?.();return;}
-      const tile=steps.shift();enemy.x=tile.x;enemy.y=tile.y;enterTile(enemy);
-      pushLog(`${enemy.character.name} 移動至 (${tile.x},${tile.y})。`,"DETAIL");
-      showEnemyStep("MOVE",`${enemy.character.name} 移動 → (${tile.x},${tile.y})`,{unitId:enemy.id});
-      afterEnemyStep(next,260);
-    };
-    next();
-  }
-
-  function moveEnemyTowardTarget(enemy){
-    if(enemy.moved||!enemy.alive) return;
-    const players=living(TEAM.PLAYER);
-    if(!players.length) return;
-
-    const reachable=TacticalEngine.reachable(map,units,enemy);
-    if(!reachable.size){
-      enemy.moved=true;
-      return;
-    }
-
-    let best=null;
-    reachable.forEach((cost,key)=>{
-      const [x,y]=key.split(",").map(Number);
-      const nearest=Math.min(...players.map(p=>Math.abs(x-p.x)+Math.abs(y-p.y)));
-      if(!best||nearest<best.nearest||(nearest===best.nearest&&cost<best.cost)){
-        best={x,y,nearest,cost};
-      }
-    });
-
-    if(best){
-      enemy.x=best.x;
-      enemy.y=best.y;
-      pushLog(`${enemy.character.name} 移動至 (${best.x},${best.y})。`,"DETAIL");
-      enterTile(enemy);
-    }
-    enemy.moved=true;
-  }
-
-  function finishEnemyPhase(){
-    if(checkMatchEnd()){
-      render();
-      return;
-    }
-    pushLog(`Round ${round}｜敵方回合結束。`);
-    beginPlayerTurn();
-  }
-
-  function continueEnemyPhase(){
-    if(phase!==PHASE.ENEMY||matchResult||pendingEnemyAttack)return;
-    const enemy=enemyQueue.shift();
-    if(!enemy){finishEnemyPhase();return;}
-    if(!enemy.alive||enemy.acted){afterEnemyStep(continueEnemyPhase,0);return;}
-
-    showEnemyStep("THINK",`AI 思考｜${enemy.character.name}`,{unitId:enemy.id});
-    afterEnemyStep(()=>{
-      if(stage?.ruleset==="CORE_CAPTURE"&&canUnitCapture(enemy)){executeCapture(enemy);afterEnemyStep(continueEnemyPhase,300);return;}
-      if(stage?.ruleset==="CORE_CAPTURE"){const pc=coreForOwner("PLAYER"),skills=coreTargetSkills(enemy,pc);if(skills.length){executeCoreAttack(enemy,pc,skills[0]);afterEnemyStep(continueEnemyPhase,350);return;}}
-      let attack=chooseEnemyAttack(enemy);
-      if(attack){
-        showEnemyStep("ATTACK",`AI 決策｜${enemy.character.name} → ${attack.defender.character.name}｜${attack.skill.name}`,{unitId:enemy.id});
-        afterEnemyStep(()=>{
-          pendingEnemyAttack=attack;pendingReactionType=null;mode="enemy-reaction";
-          pushLog(`${enemy.character.name} 對 ${attack.defender.character.name} 發動 ${attack.skill.name}。`);
-          render();window.dispatchEvent(new CustomEvent("cardtactics:state"));
-        },450);return;
-      }
-      const path=enemyMovePath(enemy);
-      if(path.length)showEnemyStep("MOVE_PLAN",`AI 決策｜${enemy.character.name} 移動 ${path.length} 格`,{unitId:enemy.id});
-      afterEnemyStep(()=>animateEnemyMove(enemy,path,()=>{
-        if(stage?.ruleset==="CORE_CAPTURE"&&canUnitCapture(enemy)){executeCapture(enemy);afterEnemyStep(continueEnemyPhase,300);return;}
-        if(stage?.ruleset==="CORE_CAPTURE"){const pc=coreForOwner("PLAYER"),skills=coreTargetSkills(enemy,pc);if(skills.length){executeCoreAttack(enemy,pc,skills[0]);afterEnemyStep(continueEnemyPhase,350);return;}}
-        attack=chooseEnemyAttack(enemy);
-        if(attack){
-          showEnemyStep("ATTACK",`AI 決策｜移動後使用 ${attack.skill.name}`,{unitId:enemy.id});
-          afterEnemyStep(()=>{pendingEnemyAttack=attack;pendingReactionType=null;mode="enemy-reaction";render();window.dispatchEvent(new CustomEvent("cardtactics:state"));},400);
-        }else{
-          enemy.moved=true;enemy.acted=true;enemy.waited=true;
-          showEnemyStep("WAIT",`${enemy.character.name} 待機`,{unitId:enemy.id});
-          afterEnemyStep(continueEnemyPhase,300);
-        }
-      }),path.length?350:0);
-    },400);
-  }
-
-  function enemyDeploymentTiles(){
-    const tiles=[];
-    DeploymentEngine.points(stage).forEach(point=>{if(point.owner!=="ENEMY")return;(point.area||[]).forEach(pos=>{if(DeploymentEngine.canDeploy({stage,map,units,owner:"ENEMY",x:pos.x,y:pos.y}))tiles.push(pos);});});
-    return tiles;
-  }
-
-  function runEnemyCardPhase(done){
-    if(!enemyCardState){done?.();return;}
-    const handSize=Number(stage.enemyCardRules?.handSize||stage.cardRules?.handSize||5);
-    const drawn=CardPhaseEngine.begin(enemyCardState,{handSize});
-    pushLog(`Round ${round}｜敵方卡牌階段開始｜💎 ${enemyCardState.crystals}。`,"SYSTEM");
-    if(drawn.length)pushLog(`敵方抽牌 ${drawn.length} 張。`,"SYSTEM");
-    showEnemyStep("DRAW",drawn.length?`敵方抽牌 ${drawn.length} 張｜💎 ${enemyCardState.crystals}/${enemyCardState.crystalCapacity}`:`敵方檢視手牌｜💎 ${enemyCardState.crystals}/${enemyCardState.crystalCapacity}`);
-
-    const decide=()=>{
-      const cardId=enemyCardState.zones.hand.find(id=>{const card=CardDatabase.get(id);return CardDatabase.isCharacter(card)&&CardPhaseEngine.canPlay(enemyCardState,card);});
-      const tile=enemyDeploymentTiles()[0];
-      if(!cardId||!tile){CardPhaseEngine.end(enemyCardState);showEnemyStep("CARD_END","敵方結束卡牌階段");afterEnemyStep(done,350);return;}
-      const card=CardDatabase.get(cardId);
-      showEnemyStep("CARD_SELECT",`敵方選擇「${card.name}」｜消耗 ${card.cost} 水晶`,{cardId:card.id});
-      afterEnemyStep(()=>{
+  function createBattleContext(){
+    return {
+      TEAM,PHASE,
+      state:()=>({map,units,stage,round,phase,matchResult,enemyCardState}),
+      map:()=>map,
+      living,resetActions,canUseSkill,targetType,combatTargets:combatTargetEntities,coreForOwner,
+      canUnitCapture,executeCapture,enterTile,checkMatchEnd,beginPlayerTurn,pushLog,render,
+      clearSelection,clearEnemyReaction,
+      skillList:unit=>SkillDatabase.list(window.EffectEngine?EffectEngine.skillIds(unit):unit.character.skills),
+      setPhase:value=>{phase=value;},
+      setMode:value=>{mode=value;},
+      setEnemyView:value=>{enemyView=value;},
+      emitState:()=>window.dispatchEvent(new CustomEvent("cardtactics:state")),
+      pendingEnemyAttack:()=>pendingEnemyAttack,
+      setPendingEnemyAttack:attack=>{pendingEnemyAttack=attack;pendingReactionType=null;},
+      resolveDirectTargetAttack,
+      createEnemyCardUnit:(card,tile)=>{
         const unit=createUnit(`ec${unitSerial++}`,TEAM.ENEMY,card.characterId,tile.x,tile.y);
         unit.cardId=card.id;unit.deployedRound=round;unit.moved=true;unit.acted=true;unit.waited=true;
-        if(!CardPhaseEngine.commit(enemyCardState,card)){CardPhaseEngine.end(enemyCardState);done?.();return;}
-        units.push(unit);
-        pushLog(`敵方使用「${card.name}」部署至 (${tile.x},${tile.y})｜本回合待命｜消耗 ${card.cost} 水晶。`,"SYSTEM");
-        showEnemyStep("DEPLOY",`${card.name} 部署 → (${tile.x},${tile.y})｜本回合待命`,{cardId:card.id,unitId:unit.id});
-        afterEnemyStep(decide,550);
-      },600);
+        return unit;
+      }
     };
-    afterEnemyStep(decide,drawn.length?600:300);
   }
 
   function runEnemyPhase(){
-    phase=PHASE.ENEMY;clearSelection();clearEnemyReaction();pushLog(`Round ${round}｜敵方回合開始。`);
-    runEnemyCardPhase(()=>{
-      if(checkMatchEnd()){render();return;}
-      resetActions(TEAM.ENEMY);
-      // Newly deployed units remain waiting for this round.
-      living(TEAM.ENEMY).filter(u=>u.deployedRound===round).forEach(u=>{u.moved=true;u.acted=true;u.waited=true;});
-      enemyQueue=living(TEAM.ENEMY).filter(u=>u.deployedRound!==round);
-      showEnemyStep("TACTICAL","敵方進入戰棋階段");
-      afterEnemyStep(continueEnemyPhase,350);
-    });
+    enemyController?.runPhase();
   }
 
   function endPlayerTurn(){
@@ -873,7 +715,7 @@
     }
 
     render();
-    continueEnemyPhase();
+    enemyController?.continuePhase();
   }
 
   function guardCandidates(){
@@ -1862,6 +1704,10 @@
   document.querySelectorAll("[data-log-tab]").forEach(btn=>{
     btn.onclick=()=>{BattleLog.setActive(logState,btn.dataset.logTab);renderLog();};
   });
+
+  battleContext=createBattleContext();
+  if(!window.TacticalEnemyController?.create)throw new Error("TacticalEnemyController is not loaded.");
+  enemyController=window.TacticalEnemyController.create(battleContext);
 
   window.CardTacticsRuntime={
     getCardState:()=>cardState,
