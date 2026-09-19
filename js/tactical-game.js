@@ -21,14 +21,7 @@
   function pushLog(text,type="SYSTEM"){
     logs.push(String(text));
     BattleLog.add(logState,type,String(text));
-  }
-
-  function renderLog(){
-    if(!window.battleLog)return;
-    battleLog.textContent=BattleLog.list(logState).map(e=>e.text).join("\n")||"（目前沒有紀錄）";
-    document.querySelectorAll("[data-log-tab]").forEach(btn=>{
-      btn.classList.toggle("active",btn.dataset.logTab===logState.active);
-    });
+    window.dispatchEvent(new CustomEvent("cardtactics:log"));
   }
 
   function logPostEffect(entry){
@@ -883,7 +876,6 @@
     if(inspectedTile){
       tacticalInfo.textContent+=(tacticalInfo.textContent?"\n\n":"")+`【格子資訊】\n${tileAnnotation(inspectedTile)}`;
     }
-    renderLog();
 
     endTurn.disabled=phase!==PHASE.PLAYER||!!matchResult;
     cancelSelect.disabled=(!selected&&!pendingCard)||!!matchResult;
@@ -1431,9 +1423,6 @@
     render();
   };
   endTurn.onclick=endPlayerTurn;
-  document.querySelectorAll("[data-log-tab]").forEach(btn=>{
-    btn.onclick=()=>{BattleLog.setActive(logState,btn.dataset.logTab);renderLog();};
-  });
 
   battleContext=createBattleContext();
   if(!window.TacticalActionController?.create)throw new Error("TacticalActionController is not loaded.");
@@ -1456,6 +1445,8 @@
     getCores:()=>cores.map(core=>({...core})),
     getPhase:()=>phase,
     getPendingCard:()=>pendingCard,
+    getBattleLog:()=>({active:logState.active,entries:BattleLog.list(logState).map(entry=>({...entry}))}),
+    setBattleLogTab:type=>{BattleLog.setActive(logState,type);window.dispatchEvent(new CustomEvent("cardtactics:log"));},
     getActionMenuAnchor:()=>phase===PHASE.PLAYER&&selected&&!commandPanelCollapsed&&mode!=="support-select"
       ?{x:selected.x,y:selected.y}:null,
     playCard:selectCardForPlay,
