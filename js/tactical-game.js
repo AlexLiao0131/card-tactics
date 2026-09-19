@@ -613,29 +613,46 @@
     const resource=resourceFor(actor,skill);
     const resourceText=resource.type==="USES"?`｜剩餘 ${resource.remaining}/${resource.max}`:"";
     const roleText=entry.role==="SUPPORT"?"支援｜":entry.role==="COUNTER"?"反擊｜":"";
-    let outcome=result.hit?(result.graze?`擦傷 ${result.damage}傷害`:`${result.damage}傷害`):"MISS";
-
-    if(result.evadeOutcome){
-      outcome=`主動迴避 ${result.evadeOutcome}｜${outcome}`;
-    }
-    if(resolved.defense?.method){
-      const d=resolved.defense;
-      const defenseText=d.bypassed
-        ?`${d.method.name}被突破`
-        :d.triggered
-          ?`${d.method.name}${d.success===false?"失敗":"成功"}`
-          :d.method.name;
-      outcome+=`｜${defenseText}`;
-    }
-
-    pushLog(`${roleText}${actor.character.name} → ${target.character.name}：${outcome}`,"BATTLE");
+    const hpAfter=Math.max(0,Number(entry.hpAfter||0));
+    const hpBefore=hpAfter+Math.max(0,Number(result.damage||0));
+    const hitLabel=result.hit?(result.graze?"GRAZE":"HIT"):"MISS";
+    const critLabel=result.crit?"｜CRIT":"";
     pushLog(
-      `[SPD ${spd}] ${actor.character.name} → ${target.character.name}｜命中${result.hc}%`+
-      `${resolved.terrain.eva?"｜森林EVA+"+resolved.terrain.eva:""}`+
-      `${resolved.terrain.acc?"｜高地ACC+"+resolved.terrain.acc:""}`+
-      resourceText,
+      `${roleText}${actor.character.name}｜${skill.name} → ${target.character.name}｜${hitLabel}${critLabel}`+
+      `｜${result.damage||0} 傷害｜HP ${hpBefore} → ${hpAfter}`,
+      "BATTLE"
+    );
+
+    const normalRoll=Number.isFinite(result.hitRoll)?result.hitRoll:null;
+    const evadeRoll=Number.isFinite(result.evadeRoll)?result.evadeRoll:null;
+    const hitRollText=evadeRoll!==null
+      ?`迴避骰 ${evadeRoll.toFixed(1)}｜原命中 ${result.originalHitChance}%｜全中門檻 ${result.activeHitChance}%`
+      :normalRoll!==null
+        ?`命中骰 ${normalRoll.toFixed(1)} / ${result.hc}% → ${result.hit?"HIT":"MISS"}`
+        :`命中判定 ${result.guaranteedHit?"必中":result.hit?"強制命中":"強制未命中"}`;
+    const critRollText=Number.isFinite(result.critRoll)
+      ?`｜暴擊骰 ${result.critRoll.toFixed(1)} / ${result.cc}% → ${result.crit?"CRIT":"NO CRIT"}`
+      :(result.hit?`｜暴擊率 ${result.cc}%${result.crit?" → CRIT":""}`:"");
+    const terrainText=
+      `${resolved.terrain.eva?`｜地形EVA +${resolved.terrain.eva}`:""}`+
+      `${resolved.terrain.acc?`｜高地ACC +${resolved.terrain.acc}`:""}`;
+
+    pushLog(
+      `[${skill.name}] ${actor.character.name} → ${target.character.name}｜${hitRollText}${critRollText}`+
+      `｜ACC修正 ${result.accuracy>=0?"+":""}${result.accuracy}｜EVA修正 ${result.evasion>=0?"+":""}${result.evasion}`+
+      `${terrainText}｜SPD ${spd}${resourceText}`,
       "DETAIL"
     );
+
+    if(resolved.defense?.method){
+      const d=resolved.defense;
+      pushLog(
+        `防禦判定｜${d.method.name}`+
+        `${Number.isFinite(d.roll)?`｜骰 ${d.roll.toFixed(1)} / ${d.chance}%`:""}`+
+        `${d.bypassed?"｜被突破":d.triggered?`｜${d.success===false?"失敗":"成功"}`:"｜未觸發"}`,
+        "DETAIL"
+      );
+    }
   }
 
   function executeEnemyAttack(reaction=null,interception=null){
