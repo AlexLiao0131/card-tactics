@@ -29,8 +29,15 @@
     <div class="battle-log-tabs" role="tablist"></div>
     <div class="battle-log-content" role="log" aria-live="polite"></div>`;
 
-  toolbar.prepend(toggle);
-  main.appendChild(drawer);
+  const actionDock=document.createElement("div");
+  actionDock.className="battle-action-dock";
+  const endTurnButton=document.createElement("button");
+  endTurnButton.type="button";
+  endTurnButton.className="battle-end-turn";
+  endTurnButton.textContent="結束回合";
+  endTurnButton.onclick=()=>window.CardTacticsRuntime?.endPlayerTurn?.();
+  actionDock.append(toggle,endTurnButton);
+  main.append(actionDock,drawer);
 
   const unitHud=document.createElement("div");
   unitHud.id="tacticalUnitHud";
@@ -82,6 +89,8 @@
 
   function render(){
     renderUnitHud();
+    const phase=window.CardTacticsRuntime?.getPhase?.();
+    endTurnButton.disabled=phase!=="PLAYER_TURN";
     const log=window.CardTacticsRuntime?.getBattleLog?.();
     if(!log)return;
     tabs.querySelectorAll("[data-log-type]").forEach(button=>{

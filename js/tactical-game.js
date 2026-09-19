@@ -9,7 +9,7 @@
   let pendingEngagement=null;
   let supportSelection=new Map();
   let pendingCopySkill=null;
-  let battleContext=null,enemyController=null;
+  let battleContext=null,enemyController=null,cardPhaseController=null;
   let renderRevision=0;
 
   // Engagement Step 4: enemy SINGLE attacks pause here until the player chooses a reaction.
@@ -52,153 +52,6 @@
     }
   }
 
-  function beginCardPhase({initial=false}={}){
-    if(cardState.zones.deck.length===0&&cardState.zones.hand.length===0){
-      cardState.crystals=Math.min(cardState.maxCrystals||10,cardState.startingCrystals||4);
-      pendingCard=null;
-      CardPhaseEngine.end(cardState);
-      phase=PHASE.PLAYER;
-      clearSelection();
-      pushLog(`Round ${round}｜牌庫已抽完，跳過卡牌階段，直接進入戰棋階段。`,"SYSTEM");
-      render();
-      window.dispatchEvent(new CustomEvent("cardtactics:state"));
-      return;
-    }
-
-    phase=PHASE.CARD;
-    clearSelection();
-    const handSize=Number(stage.cardRules?.handSize||5);
-    const drawn=CardPhaseEngine.begin(cardState,{handSize});
-    pushLog(`Round ${round}｜卡牌階段開始｜💎 ${cardState.crystals}。`,"SYSTEM");
-    if(drawn.length)pushLog(`抽牌 ${drawn.length} 張。`,"SYSTEM");
-    pendingCard=null;
-    render();
-    window.dispatchEvent(new CustomEvent("cardtactics:state"));
-  }
-
-  function endCardPhase(){
-    if(phase!==PHASE.CARD)return;
-    pendingCard=null;
-    CardPhaseEngine.end(cardState);
-    phase=PHASE.PLAYER;
-    pushLog(`Round ${round}｜進入戰棋階段。`,"SYSTEM");
-    render();
-    window.dispatchEvent(new CustomEvent("cardtactics:state"));
-  }
-
-  function selectCardForPlay(cardId){
-    if(phase!==PHASE.CARD)return false;
-    const card=CardDatabase.get(cardId);
-    if(!CardPhaseEngine.canPlay(cardState,card))return false;
-    if(CardDatabase.isCharacter(card)){
-      pendingCard=card;
-      pushLog(`選擇 ${card.name}，請在亮起的我方部署區手動選擇出生格。`,"SYSTEM");
-      render();
-      return true;
-    }
-    if(CardDatabase.isSpell(card)){
-      if(card.effect?.type==="WEATHER"){
-        if(!CardPhaseEngine.commit(cardState,card))return false;
-        const weather=card.effect.weather==="RAIN"?"HEAVY_RAIN":card.effect.weather;
-        const weatherEvents=environmentState?EnvironmentEngine.setWeather(environmentState,weather,map):[];
-        pushLog(`施放卡牌魔法「${card.name}」｜消耗 ${card.cost} 水晶。`,"SYSTEM");
-        weatherEvents.forEach(logEnvironmentEvent);
-        pushLog(`天候變更：${weather==="THUNDERSTORM"?"雷雨":weather==="HEAVY_RAIN"?"豪大雨":weather==="FOG"?"迷霧":weather}。`,"SYSTEM");
-        pendingCard=null;render();window.dispatchEvent(new CustomEvent("cardtactics:state"));return true;
-      }
-      if(["AREA_FIRE","AREA_PUSH","AREA_HEAL","AREA_DAMAGE","AREA_RELATION","AREA_BUFF","DISPEL"].includes(card.effect?.type)){
-        pendingCard=card;
-        pushLog(`選擇卡牌魔法「${card.name}」｜請點選戰場上的施放中心。`,"SYSTEM");
-        render();return true;
-      }
-      return false;
-    }
-    return false;
-  }
-
-  function spellArea(center,radius){return aoeTiles(center,Number(radius||0));}
-  function applyForcedMovement(source,target,distance,{name="強制位移"}={}){
-    const result=PostEngagementEngine.forcedMove({map,units,source,target,effect:{type:"KNOCKBACK",distance}});
-    if(result.applied){
-      pushLog(`${target.character.name} 被${name}推離 ${result.steps.length} 格。`,"BATTLE");
-      if(result.falls?.length)pushLog(`${target.character.name} 墜落｜墜落傷害 ${result.fallDamage}｜HP ${target.hp}。`,"BATTLE");
-      result.steps.forEach(()=>enterTile(target));
-    }
-    if(result.defeated)handleDefeated(target,source,{type:"ENVIRONMENT_FORCE",name});
-    return result;
-  }
-  function traverseUnitPath(unit,path,{kind="UNIT"}={}){
-    for(const tile of path||[]){
-      unit.x=tile.x;unit.y=tile.y;enterTile(unit);
-      if(!unit.alive)return {completed:false,reason:"DEFEATED"};
-      const interaction=EnvironmentEngine.pathInteraction({state:environmentState,x:tile.x,y:tile.y,kind});
-      const forced=interaction.effects?.find(e=>e.type==="FORCED_MOVE");
-      if(forced){
-        applyForcedMovement({x:tile.x,y:tile.y},unit,forced.distance,{name:forced.effect?.type==="FIRE_TORNADO"?"火龍捲":"龍捲風"});
-        return {completed:false,reason:"ENVIRONMENT_FORCE"};
-      }
-    }
-    return {completed:true};
-  }
-  function damageUnitFlat(unit,damage,sourceName){
-    if(!unit?.alive)return;
-    unit.hp=Math.max(0,unit.hp-Math.max(0,Number(damage||0)));
-    pushLog(`${sourceName} → ${unit.character.name}｜${damage} 傷害｜HP ${unit.hp}。`,"BATTLE");
-    if(unit.hp<=0&&unit.alive){unit.alive=false;handleDefeated(unit,null,{type:"CARD_SPELL",name:sourceName});}
-  }
-  function resolveSpellAt(card,center){
-    if(!card||phase!==PHASE.CARD||pendingCard!==card)return false;
-    const effect=card.effect||{},affected=spellArea(center,effect.radius||0);
-    if(!CardPhaseEngine.commit(cardState,card))return false;
-    pushLog(`施放卡牌魔法「${card.name}」｜中心 (${center.x},${center.y})｜消耗 ${card.cost} 水晶。`,"SYSTEM");
-    if(effect.type==="AREA_FIRE"){
-      affected.forEach(tile=>(EnvironmentEngine.apply({map,state:environmentState,x:tile.x,y:tile.y,forces:effect.forces||["FIRE"]})||[]).forEach(logEnvironmentEvent));
-      affected.forEach(tile=>{const u=unitAt(tile.x,tile.y);if(u)applyEnvironmentHazardToUnit(u,{reason:"遭野火波及"});});
-    }else if(effect.type==="AREA_PUSH"){
-      const tornadoEvents=affected.map(tile=>EnvironmentEngine.createTornado(environmentState,tile.x,tile.y,{
-        duration:2,pushDistance:Number(effect.distance||2),damage:Number(effect.damage||20),fireDamage:Number(effect.fireTornadoDamage||45)
-      }));
-      tornadoEvents.forEach(logEnvironmentEvent);
-      if(tornadoEvents.some(e=>e.type==="FIRE_TORNADO_CREATED"))pushLog(`🔥🌪 火焰與龍捲風結合，形成火龍捲！`,"SYSTEM");
-      affected.forEach(tile=>{
-        const u=unitAt(tile.x,tile.y);if(!u)return;
-        const active=EnvironmentEngine.effectAt(environmentState,tile.x,tile.y);
-        const wind=active.find(e=>e.type===EnvironmentEngine.EFFECT.FIRE_TORNADO)||active.find(e=>e.type===EnvironmentEngine.EFFECT.TORNADO);
-        damageUnitFlat(u,Number(wind?.damage||effect.damage||20),wind?.type===EnvironmentEngine.EFFECT.FIRE_TORNADO?"火龍捲":card.name);
-        if(u.alive)applyForcedMovement(center,u,Number(wind?.pushDistance||effect.distance||2),{name:wind?.type===EnvironmentEngine.EFFECT.FIRE_TORNADO?"火龍捲":"龍捲風"});
-      });
-    }else if(effect.type==="AREA_HEAL"){
-      affected.forEach(tile=>{const u=unitAt(tile.x,tile.y);if(!u?.alive||u.team!==TEAM.PLAYER)return;const before=u.hp;u.hp=Math.min(u.character.combat.hp,u.hp+Number(effect.heal||0));pushLog(`${card.name} → ${u.character.name}｜回復 ${u.hp-before} HP｜HP ${u.hp}。`,"BATTLE");});
-    }else if(effect.type==="AREA_DAMAGE"){
-      affected.forEach(tile=>{const u=unitAt(tile.x,tile.y);if(u)damageUnitFlat(u,effect.damage||0,card.name);(EnvironmentEngine.apply({map,state:environmentState,x:tile.x,y:tile.y,forces:effect.forces||[]})||[]).forEach(logEnvironmentEvent);});
-    }else if(effect.type==="AREA_RELATION"){
-      const source={id:"CARD_SOURCE",team:TEAM.PLAYER};
-      affected.forEach(tile=>{const u=unitAt(tile.x,tile.y);if(!u?.alive)return;for(const e of effect.effects||[]){if(e.relation!==EffectEngine.relation(source,u))continue;const r=EffectEngine.apply({source,target:u,effect:e});if(e.type==="HEAL")pushLog(`${card.name} → ${u.character.name}｜回復 ${r.amount||0} HP｜HP ${u.hp}。`,"BATTLE");else if(e.type==="MAGIC_DAMAGE"){pushLog(`${card.name} → ${u.character.name}｜${r.amount||0} 神聖傷害｜HP ${u.hp}。`,"BATTLE");if(!u.alive)handleDefeated(u,null,card);}}});
-    }else if(effect.type==="AREA_BUFF"){
-      const source={id:"CARD_SOURCE",team:TEAM.PLAYER};
-      affected.forEach(tile=>{const u=unitAt(tile.x,tile.y);if(!u?.alive||!EffectEngine.targetMatches(source,u,effect.targetFilter||{}))return;EffectEngine.apply({source,target:u,effect:{type:"BUFF",duration:effect.duration,...(effect.buff||{})}});pushLog(`${card.name} → ${u.character.name}｜獲得陣地強化。`,"BATTLE");});
-    }else if(effect.type==="DISPEL"){
-      const u=unitAt(center.x,center.y);if(u?.alive&&u.team===TEAM.PLAYER){const r=EffectEngine.apply({source:{id:"CARD_SOURCE",team:TEAM.PLAYER},target:u,effect:{type:"DISPEL",classification:effect.classification||"NEGATIVE"}});pushLog(`${card.name} → ${u.character.name}｜移除 ${r.removed||0} 個負面效果。`,"BATTLE");}
-    }
-    pendingCard=null;checkMatchEnd();render();window.dispatchEvent(new CustomEvent("cardtactics:state"));return true;
-  }
-
-  function deployPendingCard(tile){
-    const card=pendingCard;
-    if(!card||phase!==PHASE.CARD)return false;
-    if(!DeploymentEngine.canDeploy({stage,map,units,owner:"PLAYER",x:tile.x,y:tile.y}))return false;
-    const unit=createUnit(`pc${unitSerial++}`,TEAM.PLAYER,card.characterId,tile.x,tile.y);
-    unit.cardId=card.id;
-    unit.deployedRound=round;
-    unit.moved=true;unit.acted=true;unit.waited=true;
-    if(!CardPhaseEngine.commit(cardState,card))return false;
-    units.push(unit);
-    pushLog(`${card.name} 部署至 (${tile.x},${tile.y})｜消耗 ${card.cost} 水晶。`,"SYSTEM");
-    pendingCard=null;
-    render();
-    window.dispatchEvent(new CustomEvent("cardtactics:state"));
-    return true;
-  }
 
   function createMap(){
     return MapDatabase.createMap(stage.mapId);
@@ -295,7 +148,7 @@
     phase=PHASE.CARD;
     matchResult=null;
     stageEvent({type:"ROUND_START",round,team:"PLAYER"});
-    beginCardPhase({initial:true});
+    cardPhaseController.begin({initial:true});
   }
 
   function unitAt(x,y){
@@ -538,7 +391,7 @@
       resolveWeatherEvents();
       if(checkMatchEnd()){render();return;}
     }
-    beginCardPhase();
+    cardPhaseController.begin();
   }
 
   function createBattleContext(){
@@ -911,8 +764,6 @@
     renderRevision++;
     renderTurnStatus();
     renderPanel();
-    endTurn.disabled=phase!==PHASE.PLAYER||!!matchResult;
-    cancelSelect.disabled=(!selected&&!pendingCard)||!!matchResult;
     window.dispatchEvent(new CustomEvent("cardtactics:battle-render",{detail:{revision:renderRevision}}));
   }
 
@@ -968,8 +819,8 @@
     window.dispatchEvent(new CustomEvent("cardtactics:inspection"));
     if(matchResult){render();return;}
     if(phase===PHASE.CARD){
-      if(pendingCard&&CardDatabase.isSpell(pendingCard)){resolveSpellAt(pendingCard,tile);return;}
-      if(pendingCard&&CardDatabase.isCharacter(pendingCard)&&!unit)deployPendingCard(tile);
+      if(pendingCard&&CardDatabase.isSpell(pendingCard)){cardPhaseController.resolveAt(pendingCard,tile);return;}
+      if(pendingCard&&CardDatabase.isCharacter(pendingCard)&&!unit)cardPhaseController.deployAt(tile);
       return;
     }
     if(phase!==PHASE.PLAYER) return;
@@ -1435,22 +1286,6 @@
   }
 
   resetMap.onclick=resetBattle;
-  cancelSelect.onclick=()=>{
-    if(matchResult)return;
-    if(phase===PHASE.CARD&&pendingCard){
-      pendingCard=null;
-      pushLog("取消角色卡部署；未消耗水晶。","SYSTEM");
-      render();
-      window.dispatchEvent(new CustomEvent("cardtactics:state"));
-      return;
-    }
-    if(phase!==PHASE.PLAYER)return;
-    if(mode==="attack"||mode==="map-target"){backFromTargeting();return;}
-    if(cancelPendingMove())return;
-    clearSelection();
-    render();
-  };
-  endTurn.onclick=endPlayerTurn;
 
   battleContext=createBattleContext();
   if(!window.TacticalActionController?.create)throw new Error("TacticalActionController is not loaded.");
@@ -1463,6 +1298,19 @@
   }=actionController;
   if(!window.TacticalEnemyController?.create)throw new Error("TacticalEnemyController is not loaded.");
   enemyController=window.TacticalEnemyController.create(battleContext);
+  if(!window.CardPhaseController?.create)throw new Error("CardPhaseController is not loaded.");
+  cardPhaseController=window.CardPhaseController.create({
+    TEAM,PHASE,
+    state:()=>({map,units,stage,round,phase,matchResult,cardState,pendingCard,environmentState}),
+    setPhase:value=>{phase=value;},
+    getPendingCard:()=>pendingCard,
+    setPendingCard:value=>{pendingCard=value;},
+    clearSelection,pushLog,render,emitState:()=>window.dispatchEvent(new CustomEvent("cardtactics:state")),
+    unitAt,createUnit:(id,team,characterId,x,y)=>createUnit(id,team,characterId,x,y),
+    nextUnitId:()=>`pc${unitSerial++}`,
+    aoeTiles,applyForcedMovement,damageUnitFlat,applyEnvironmentHazardToUnit,
+    logEnvironmentEvent,checkMatchEnd,handleDefeated
+  });
 
   window.CardTacticsRuntime={
     getCardState:()=>cardState,
@@ -1483,9 +1331,10 @@
       const unit=inspectedTile?unitAt(inspectedTile.x,inspectedTile.y):selected;
       return unitPresentation(unit||selected);
     },
-    playCard:selectCardForPlay,
-    endCardPhase,
-    cancelCard:()=>{pendingCard=null;render();},
+    playCard:cardId=>cardPhaseController.select(cardId),
+    endCardPhase:()=>cardPhaseController.end(),
+    cancelCard:()=>cardPhaseController.cancel(),
+    endPlayerTurn,
     refresh:render,
     resetBattle
   };
