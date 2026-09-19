@@ -20,14 +20,34 @@ function depth(s,x,y,l=0){return 1000+point(x,y,0,s.map).y*10+l}
 function tile(s,x,y){return s.map.tiles.find(t=>t.x===x&&t.y===y)||null}
 function path(g,pts){g.beginPath();g.moveTo(pts[0].x,pts[0].y);pts.slice(1).forEach(v=>g.lineTo(v.x,v.y));g.closePath()}
 function terrainFill(t){return visual("terrain",t.terrain)?.fill??visual("terrain","PLAIN")?.fill??0x405b49}
-function drawTileGraphic(g,t,p){
-  g.clear();const q=corners({x:0,y:0});
-  if(projection==="ISO"&&t.elevation>0){
-    const drop=t.elevation*C.eh;
-    const front=[q[3],q[2],{x:q[2].x,y:q[2].y+drop},{x:q[3].x,y:q[3].y+drop}];
-    const right=[q[2],q[1],{x:q[1].x,y:q[1].y+drop},{x:q[2].x,y:q[2].y+drop}];
-    g.fillStyle(0x3a352b,.95);path(g,front);g.fillPath();g.fillStyle(0x4b4435,.95);path(g,right);g.fillPath();
+function edgeNeighbor(s,t,edge){
+  const dirs=[[-1,0],[0,1],[1,0],[0,-1]],q=((rotation%4)+4)%4;
+  const dir=dirs[(edge+q)%4];
+  return tile(s,t.x+dir[0],t.y+dir[1]);
+}
+function drawElevationEdges(g,s,t,q){
+  if(projection!=="ISO")return;
+  const elevation=Number(t.elevation||0);
+  const edgeColors=[0x514a3a,0x3a352b,0x454033,0x4b4435];
+  for(let edge=0;edge<4;edge++){
+    const neighbor=edgeNeighbor(s,t,edge);
+    const neighborElevation=neighbor?Number(neighbor.elevation||0):0;
+    const levels=elevation-neighborElevation;
+    if(levels<=0)continue;
+    const a=q[edge],b=q[(edge+1)%4],drop=levels*C.eh;
+    const face=[a,b,{x:b.x,y:b.y+drop},{x:a.x,y:a.y+drop}];
+    g.fillStyle(edgeColors[edge],.95);path(g,face);g.fillPath();
+    g.lineStyle(1,0x25231e,.65);path(g,face);g.strokePath();
+    for(let level=1;level<levels;level++){
+      const y=level*C.eh;
+      g.lineStyle(1,0x756c55,.38);
+      g.beginPath();g.moveTo(a.x,a.y+y);g.lineTo(b.x,b.y+y);g.strokePath();
+    }
   }
+}
+function drawTileGraphic(g,s,t,p){
+  g.clear();const q=corners({x:0,y:0});
+  drawElevationEdges(g,s,t,q);
   g.fillStyle(terrainFill(t),1);path(g,q);g.fillPath();g.lineStyle(2,C.grid,.78);path(g,q);g.strokePath();
   const line=(color,scale,width=4)=>{const r=q.map(v=>({x:v.x*scale,y:v.y*scale}));g.lineStyle(width,color,1);path(g,r);g.strokePath()};
   if(t.deploymentAreaOwner)line(t.deploymentAreaOwner==="PLAYER"?0x397bd1:t.deploymentAreaOwner==="ENEMY"?0xcf4c4c:0xd0ae54,.94,2);
@@ -67,7 +87,7 @@ function reconcileTiles(s,n){
   const live=new Set();
   for(const t of s.map.tiles){const k=key(t.x,t.y);live.add(k);const p=wp(s,t,n),z=depth(s,t.x,t.y);let v=V.tiles.get(k);
     if(!v){v={g:scene.add.graphics(),height:null};V.tiles.set(k,v)}
-    drawTileGraphic(v.g,t,p);v.g.setDepth(z);
+    drawTileGraphic(v.g,s,t,p);v.g.setDepth(z);
     if(v.height){v.height.destroy();v.height=null}
     if(t.elevation)v.height=scene.add.text(p.x+31,p.y-13,`H${t.elevation}`,{fontSize:"10px",fontStyle:"bold",color:"#fff0ad",stroke:"#17140d",strokeThickness:3}).setOrigin(.5).setDepth(z+1);
   }
