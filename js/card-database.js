@@ -15,7 +15,7 @@ window.CARDS={
   tornado_card:{id:"tornado_card",name:"龍捲風",type:"SPELL",spellType:"TACTICAL",faction:"NEUTRAL",cost:5,effect:{type:"AREA_PUSH",radius:1,distance:2,damage:20,forces:["WIND"],fireTornadoDamage:45}},
   miracle_card:{id:"miracle_card",name:"神跡",type:"SPELL",spellType:"HEAL",faction:"NEUTRAL",cost:6,effect:{type:"AREA_HEAL",radius:1,heal:80,team:"PLAYER"}},
   fog_card:{id:"fog_card",name:"迷霧",type:"SPELL",spellType:"WEATHER",faction:"NEUTRAL",cost:3,effect:{type:"WEATHER",weather:"FOG"}},
-  starfall_card:{id:"starfall_card",name:"星隕",type:"SPELL",spellType:"TACTICAL",faction:"NEUTRAL",cost:10,effect:{type:"AREA_DAMAGE",radius:2,damage:100,forces:["HEAVY_FIRE","EXPLOSION"]}},
+  starfall_card:{id:"starfall_card",name:"星隕",type:"SPELL",spellType:"TACTICAL",faction:"NEUTRAL",cost:10,effect:{type:"AREA_DAMAGE",radius:2,damage:100,forces:["HEAVY_FIRE","EXPLOSION","IMPACT"]}},
   bear_trap_card:{id:"bear_trap_card",name:"捕熊陷阱",type:"SPELL",spellType:"TRAP",faction:"HUNTER",cost:2,effect:{type:"TRAP"}},
   avalanche_card:{id:"avalanche_card",name:"雪崩",type:"SPELL",spellType:"TACTICAL",faction:"HUNTER",cost:6,effect:{type:"AREA_DAMAGE_PUSH"}},
   cassandra_blessing_card:{id:"cassandra_blessing_card",name:"卡珊多拉的祝福",type:"SPELL",spellType:"BUFF",faction:"HUNTER",cost:4,effect:{type:"BUFF"}},
