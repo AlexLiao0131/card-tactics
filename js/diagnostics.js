@@ -28,12 +28,34 @@ function memory(){
   const m=performance.memory;
   return m?{usedMB:+(m.usedJSHeapSize/1048576).toFixed(1),totalMB:+(m.totalJSHeapSize/1048576).toFixed(1),limitMB:+(m.jsHeapSizeLimit/1048576).toFixed(1)}:null;
 }
+
+function audit(){
+  const s=window.CardTacticsRuntime?.getBattleSnapshot?.(),v=renderer();
+  if(!s)return null;
+  const expected={
+    tiles:s.map?.tiles?.length||0,
+    objects:(s.map?.objects||[]).filter(o=>!o.destroyed&&o.type!=="CORE").length,
+    cores:s.cores?.length||0,units:s.units?.length||0,
+    deploymentTiles:s.map?.tiles?.filter(t=>!!t.deploymentAreaOwner).length||0,
+    captureTiles:s.map?.tiles?.filter(t=>!!t.capturePoint).length||0,
+    enemyHand:s.presentation?.enemyHandCount||0
+  };
+  const actual={
+    tiles:v?.objects?.tiles??null,objects:v?.objects?.mapObjects??null,cores:v?.objects?.cores??null,units:v?.objects?.units??null,
+    enemyHand:document.querySelectorAll(".opponent-hand .opponent-card-back").length
+  };
+  const mismatch=[];
+  for(const k of ["tiles","objects","cores","units","enemyHand"])if(actual[k]!==null&&expected[k]!==actual[k])mismatch.push(`${k}:${expected[k]}!=${actual[k]}`);
+  return{expected,actual,ok:mismatch.length===0,mismatch};
+}
+
 function report(){
   const data={
     generatedAt:now(),userAgent:navigator.userAgent,
     enabled,uptimeSeconds:Math.round((performance.now()-started)/1000),fps,
     runtime:runtime(),renderer:renderer(),memory:memory(),
-    battleLog:{count:window.CardTacticsRuntime?.getLogState?.()?.entries?.length??null,max:window.BattleLog?.MAX_ENTRIES??null},
+    battleLog:{count:window.CardTacticsRuntime?.getBattleLog?.()?.entries?.length??null,max:window.BattleLog?.MAX_ENTRIES??null},
+    presentation:audit(),
     recentEvents:events.slice(-80)
   };
   return "CARD TACTICS DIAGNOSTICS\n"+JSON.stringify(data,null,2);
@@ -64,7 +86,8 @@ function mount(){
     summary.textContent=[
       `FPS ${fps}｜事件 ${events.length}/${MAX}`,
       r?`Round ${r.round}｜${r.phase}｜${r.mode}｜Snapshot #${r.revision}｜Units ${r.units}`:"Runtime 尚未啟動",
-      v?`Phaser children ${v.children}｜Zoom ${v.zoom}｜${v.projection}｜Rotation ${v.rotation}`:"Phaser 尚未啟動",
+      v?`Phaser children ${v.children}｜Zoom ${v.zoom}｜${v.projection}｜Rotation ${v.rotation}｜Render ${v.lastRenderMs}ms`:"Phaser 尚未啟動",
+      (()=>{const a=audit();return a?(a.ok?"Presentation 對帳：PASS":`Presentation 對帳：FAIL ${a.mismatch.join(" ")}`):"Presentation 對帳：尚未啟動"})(),
       m?`JS Heap ${m.usedMB} / ${m.totalMB} MB`:"JS Heap：此瀏覽器不提供"
     ].join("\n");
   }

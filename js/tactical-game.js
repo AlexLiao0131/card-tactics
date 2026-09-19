@@ -272,6 +272,9 @@
     });
     DeckEngine.shuffle(cardState.zones);
     DeckEngine.shuffle(enemyCardState.zones);
+    // Prepare the opponent opening hand without starting its turn or granting crystals.
+    // Enemy Card Phase later calls begin(); because the hand is already full it only advances turn resources.
+    DeckEngine.draw(enemyCardState.zones,Number(stage.enemyCardRules?.handSize||stage.cardRules?.handSize||5));
 
     (stage.playerSpawns||[]).forEach((u,i)=>units.push(createUnit("p"+i,TEAM.PLAYER,u.characterId,u.x,u.y)));
     (stage.enemySpawns||[]).forEach((u,i)=>units.push(createUnit("e"+i,TEAM.ENEMY,u.characterId,u.x,u.y)));
@@ -864,15 +867,22 @@
         reachable:reachable.has(tile.x+","+tile.y),attackable,deployable,
         inspected:!!(inspectedTile&&inspectedTile.x===tile.x&&inspectedTile.y===tile.y),
         effects:effects.map(effect=>effect.type),
-        deployment:capturePoint?.owner||null,
+        deploymentAreaOwner:points.find(point=>(point.area||[]).some(t=>t.x===tile.x&&t.y===tile.y))?.owner||null,
         capturePoint:capturePoint?{id:capturePoint.id,name:capturePoint.name,owner:capturePoint.owner}:null,
-        core:core?{owner:core.owner,name:core.name,hp:core.hp,maxHp:core.maxHp}:null
+        core:core?{id:core.id,owner:core.owner,name:core.name,hp:core.hp,maxHp:core.maxHp}:null
       };
     });
     return {
       revision:renderRevision,
       phase,round,mode,
-      map:{width:map.width,height:map.height,tiles,objects:(map.objects||[]).map(o=>({...o}))},
+      map:{id:map.id,width:map.width,height:map.height,tiles,objects:(map.objects||[]).map(o=>({...o}))},
+      cores:cores.map(core=>({...core})),
+      presentation:{
+        deploymentPoints:points.map(point=>({id:point.id,name:point.name,owner:point.owner,capturable:point.capturable!==false,
+          area:(point.area||[]).map(t=>({...t})),captureTiles:(point.captureTiles||[]).map(t=>({...t}))})),
+        enemyHandCount:enemyCardState?.zones?.hand?.length||0,
+        enemyDeckCount:enemyCardState?.zones?.deck?.length||0
+      },
       units:units.filter(u=>u.alive).map(u=>({
         id:u.id,x:u.x,y:u.y,team:u.team==="P"?"PLAYER":"ENEMY",
         name:u.character.name,visualId:u.character.visualId||null,
