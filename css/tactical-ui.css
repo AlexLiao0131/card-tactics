@@ -85,3 +85,27 @@
   .opponent-hand{top:-28px}
   .opponent-meta{top:58px}
 }
+
+
+/* Persistent battle actions are owned by TacticalUIController and kept away from the top Core HUD. */
+.battle-action-dock{
+  position:fixed;z-index:117;right:10px;bottom:156px;
+  display:flex;flex-direction:column;align-items:stretch;gap:6px;
+  pointer-events:auto;
+}
+.battle-action-dock button{
+  width:auto;min-width:78px;padding:7px 10px;
+  border:1px solid #647487;border-radius:8px;
+  background:#081018e8;color:#edf4fb;font-weight:900;
+  box-shadow:0 6px 18px #0007;touch-action:manipulation;
+}
+.battle-action-dock button:disabled{opacity:.4}
+.battle-end-turn{border-color:#8a7958!important;color:#ffe5ae!important}
+@media(max-width:700px){
+  .battle-action-dock{
+    right:6px;
+    bottom:max(148px,calc(env(safe-area-inset-bottom) + 136px));
+    gap:5px;
+  }
+  .battle-action-dock button{min-width:70px;padding:7px 8px;font-size:10px}
+}
