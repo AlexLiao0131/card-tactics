@@ -358,13 +358,48 @@
     if(!core||core.hp<=0)return null;
     return {kind:"CORE",id:`CORE:${core.owner}`,x:core.x,y:core.y,team:attackerTeam===TEAM.PLAYER?TEAM.ENEMY:TEAM.PLAYER,alive:true,core};
   }
-  function targetableEntities(unit,skill){
+  function combatTargetEntities(unit){
     const entities=[...units];
     if(stage?.ruleset==="CORE_CAPTURE"){
       const owner=unit.team===TEAM.PLAYER?"ENEMY":"PLAYER",core=coreForOwner(owner),target=coreCombatTarget(core,unit.team);
       if(target)entities.push(target);
     }
-    return entities.filter(target=>TacticalEngine.canTarget(map,unit,target,skill));
+    return entities;
+  }
+  function attackPlanForTarget(unit,target,skill){
+    if(!unit?.alive||unit.acted||!target?.alive||!skill)return null;
+    // Explicit skill-owned approach remains its own movement mechanic.
+    if(skill.approach)return TacticalEngine.canTarget(map,unit,target,skill)?{x:unit.x,y:unit.y,cost:0,path:[]}:null;
+    const positions=[{x:unit.x,y:unit.y,cost:0,path:[]}];
+    if(!unit.moved){
+      const reachable=TacticalEngine.reachable(map,units,unit);
+      reachable.forEach((cost,key)=>{
+        const [x,y]=key.split(",").map(Number);
+        const facing=unit.facing,path=TacticalEngine.pathTo(map,units,unit,x,y);
+        unit.facing=facing;
+        if(path.length)positions.push({x,y,cost,path});
+      });
+    }
+    const legal=positions.filter(pos=>{
+      const probe={...unit,x:pos.x,y:pos.y};
+      return TacticalEngine.canTarget(map,probe,target,skill);
+    });
+    legal.sort((a,b)=>a.cost-b.cost||a.y-b.y||a.x-b.x);
+    return legal[0]||null;
+  }
+  function targetableEntities(unit,skill){
+    return combatTargetEntities(unit).filter(target=>attackPlanForTarget(unit,target,skill));
+  }
+  function approachTargetForAttack(unit,target,skill){
+    const plan=attackPlanForTarget(unit,target,skill);
+    if(!plan)return false;
+    if(!plan.path.length)return true;
+    if(!pendingMove||pendingMove.unitId!==unit.id)beginPendingMove(unit);
+    const result=traverseUnitPath(unit,plan.path,{kind:"UNIT"});
+    unit.moved=true;
+    if(!result.completed){commitPendingMove(unit);return false;}
+    pushLog(`${unit.character.name} 自動移動至可使用「${skill.name}」的位置。`,"DETAIL");
+    return TacticalEngine.canTarget(map,unit,target,skill);
   }
   function resolveDirectTargetAttack(unit,target,skill){
     if(!unit?.alive||unit.acted||!target?.alive||!TacticalEngine.canTarget(map,unit,target,skill))return false;
@@ -1131,6 +1166,7 @@
     if(selected&&!selected.acted&&mode==="attack"){
       const target=unit&&targets.includes(unit)?unit:(core?targets.find(candidate=>candidate.kind==="CORE"&&candidate.core===core):null);
       if(target){
+        if(!approachTargetForAttack(selected,target,selectedSkill)){pushLog(`${selectedSkill.name} 無可到達的合法攻擊位置。`,"SYSTEM");render();return;}
         if(target.kind==="CORE")resolveDirectTargetAttack(selected,target,selectedSkill);else prepareAttack(selected,target,selectedSkill);
         return;
       }
@@ -1239,7 +1275,6 @@
 
   function prepareAttack(attacker,defender,skill){
     if(!canUseSkill(attacker,skill)) return;
-    commitPendingMove(attacker);
     if(skill.approach&&!approachForSkill(attacker,defender,skill)){pushLog(`${skill.name} 無合法衝鋒路徑。`,"SYSTEM");render();return;}
     if(skill.effects||skill.relationEffects||skill.bloodAction){executeEffectSkill(attacker,defender,skill);return;}
     skill=effectiveSkill(attacker,skill);
@@ -1312,7 +1347,8 @@
       return;
     }
 
-    // A completed active attack ends this unit's PLAYER TURN action.
+    // A completed active attack commits any reversible movement and ends this unit's action.
+    commitPendingMove(attacker);
     attacker.moved=true;
     attacker.acted=true;
     attacker.waited=true;
