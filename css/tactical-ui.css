@@ -40,7 +40,7 @@
 .battle-unit-hud{display:none!important}
 .tactical-unit-hud{
   position:absolute;z-index:39;left:10px;top:auto;bottom:154px;transform:translateY(8px);
-  display:flex;align-items:center;gap:9px;width:min(330px,42vw);min-height:72px;
+  display:flex;align-items:center;gap:9px;width:min(390px,48vw);min-height:86px;
   padding:7px 38px 7px 10px;border:1px solid #647487;border-radius:12px;
   background:#081018e8;box-shadow:0 8px 24px #0008;
   opacity:0;pointer-events:none;transition:.14s ease;
@@ -56,7 +56,7 @@
 .tactical-unit-name{font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tactical-unit-hp{height:8px;margin-top:4px;border-radius:99px;background:#351b1b;overflow:hidden}
 .tactical-unit-hp i{display:block;height:100%;background:#55a96a}
-.tactical-unit-hp-text,.tactical-unit-status,.tactical-unit-position{margin-top:2px;font-size:10px;color:#d8e1ec}
+.tactical-unit-hp-text,.tactical-unit-stats,.tactical-unit-preview,.tactical-unit-status,.tactical-unit-position{margin-top:2px;font-size:10px;color:#d8e1ec}\n.tactical-unit-stats{line-height:1.35;color:#cfe2f4}.tactical-unit-preview{color:#ffe09a;font-weight:900}
 .tactical-unit-status{color:#f0d89b;font-weight:800}
 .tactical-unit-position{color:#aebbc8}
 .tactical-unit-close{
@@ -65,7 +65,16 @@
   display:grid;place-items:center;background:#15202c;color:#dce5ef;font-size:18px;line-height:1;
 }
 @media(max-width:700px){
-  .tactical-unit-hud{left:5px;top:auto;bottom:122px;width:min(270px,58vw);min-height:66px;padding:6px 34px 6px 8px}
+  .tactical-unit-hud{left:5px;top:auto;bottom:122px;width:min(330px,72vw);min-height:78px;padding:6px 34px 6px 8px}
   .tactical-unit-portrait{width:46px;height:46px;flex-basis:46px}
-  .tactical-unit-hp-text,.tactical-unit-status,.tactical-unit-position{font-size:9px}
+  .tactical-unit-hp-text,.tactical-unit-stats,.tactical-unit-preview,.tactical-unit-status,.tactical-unit-position{font-size:9px}
 }
+
+/* Developer diagnostics: settings-only, bounded and opt-in. */
+.diagnostics-panel{margin:22px 0 14px;padding:14px;border:1px solid #48586a;border-radius:12px;background:#0b121be8}
+.diagnostics-panel h3{margin:0 0 8px}
+.diagnostics-panel label{margin:8px 0!important}
+.diagnostics-note{margin:5px 0 9px;color:#9eabb9;font-size:11px}
+#diagnosticsSummary{margin:8px 0;padding:9px;border-radius:8px;background:#05090e;color:#cfe2f4;white-space:pre-wrap;font:11px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.diagnostics-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+@media(max-width:700px){.diagnostics-panel{padding:10px}.diagnostics-actions{grid-template-columns:1fr}#diagnosticsSummary{font-size:10px}}
