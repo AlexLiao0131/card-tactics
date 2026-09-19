@@ -35,7 +35,7 @@
   const unitHud=document.createElement("div");
   unitHud.id="tacticalUnitHud";
   unitHud.className="tactical-unit-hud";
-  unitHud.innerHTML=`<div class="tactical-unit-portrait"><span>?</span><img alt=""></div><div class="tactical-unit-summary"><div class="tactical-unit-name"></div><div class="tactical-unit-hp"><i></i></div><div class="tactical-unit-hp-text"></div><div class="tactical-unit-status"></div><div class="tactical-unit-position"></div></div><button class="tactical-unit-close" type="button" aria-label="關閉角色資訊">×</button>`;
+  unitHud.innerHTML=`<div class="tactical-unit-portrait"><span>?</span><img alt=""></div><div class="tactical-unit-summary"><div class="tactical-unit-name"></div><div class="tactical-unit-hp"><i></i></div><div class="tactical-unit-hp-text"></div><div class="tactical-unit-stats"></div><div class="tactical-unit-preview"></div><div class="tactical-unit-status"></div><div class="tactical-unit-position"></div></div><button class="tactical-unit-close" type="button" aria-label="關閉角色資訊">×</button>`;
   main.appendChild(unitHud);
   let unitHudManuallyHidden=false;
 
@@ -66,6 +66,12 @@
     unitHud.querySelector(".tactical-unit-name").textContent=data.name;
     unitHud.querySelector(".tactical-unit-hp-text").textContent=`HP ${data.hp}/${data.maxHp}｜MOVE ${data.move}`;
     unitHud.querySelector(".tactical-unit-hp i").style.width=`${Math.max(0,Math.min(100,data.hp/data.maxHp*100))}%`;
+    const s=data.stats||{};
+    unitHud.querySelector(".tactical-unit-stats").textContent=
+      `ATK ${s.atk??"-"}  DEF ${s.def??"-"}  MATK ${s.matk??"-"}  MDEF ${s.mdef??"-"}｜HIT ${s.hit??"-"}%  EVA ${s.eva??"-"}  CRIT ${s.crit??"-"}%  SPD ${s.spd??"-"}`;
+    unitHud.querySelector(".tactical-unit-preview").textContent=data.preview
+      ?`${data.preview.skillName} → 命中 ${data.preview.hit}%｜暴擊 ${data.preview.crit}%`
+      :"";
     unitHud.querySelector(".tactical-unit-status").textContent=`狀態：${data.actionState}`;
     unitHud.querySelector(".tactical-unit-position").textContent=`(${data.x},${data.y}) ${data.terrain} 高度${data.elevation}`;
     const img=unitHud.querySelector("img"),fallback=unitHud.querySelector("span");
@@ -95,7 +101,7 @@
 
   window.addEventListener("cardtactics:inspection",()=>{unitHudManuallyHidden=false;renderUnitHud();});
   window.addEventListener("cardtactics:log",render);
-  window.addEventListener("cardtactics:state",()=>{unitHudManuallyHidden=false;render();});
+  window.addEventListener("cardtactics:state",render);
   setOpen(false);
   render();
 })();

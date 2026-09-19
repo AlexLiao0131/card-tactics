@@ -10,6 +10,7 @@
   let supportSelection=new Map();
   let pendingCopySkill=null;
   let battleContext=null,enemyController=null;
+  let renderRevision=0;
 
   // Engagement Step 4: enemy SINGLE attacks pause here until the player chooses a reaction.
   let pendingEnemyAttack=null;
@@ -20,6 +21,7 @@
 
   function pushLog(text,type="SYSTEM"){
     logs.push(String(text));
+    if(logs.length>240)logs.splice(0,logs.length-240);
     BattleLog.add(logState,type,String(text));
     window.dispatchEvent(new CustomEvent("cardtactics:log"));
   }
@@ -831,14 +833,11 @@
     return lines.join("\n");
   }
 
-  function render(){
-    battlefield.innerHTML="";
-
+  function battleSnapshot(){
     const reachable=
       selected&&phase===PHASE.PLAYER&&!selected.acted&&!selected.moved&&mode==="command"
         ?TacticalEngine.reachable(map,units,selected)
         :new Map();
-
     const targets=
       selected&&phase===PHASE.PLAYER&&!selected.acted&&mode==="attack"&&selectedSkill&&targetType(selectedSkill)==="SINGLE"
         ?targetableEntities(selected,selectedSkill)
@@ -847,69 +846,110 @@
       selected&&phase===PHASE.PLAYER&&!selected.acted&&mode==="map-target"&&selectedSkill
         ?mapTargetTiles(selected,selectedSkill)
         :[];
-
-    map.tiles.forEach(tile=>{
-      const cell=document.createElement("div");
-      const unit=unitAt(tile.x,tile.y);
-      const core=coreAt(tile.x,tile.y);
-
-      cell.className="tile "+tile.terrain.toLowerCase();
-      const capturePoint=DeploymentEngine.points(stage).find(point=>
-        (point.captureTiles||[]).some(t=>t.x===tile.x&&t.y===tile.y)
+    const points=DeploymentEngine.points(stage);
+    const tiles=map.tiles.map(tile=>{
+      const unit=unitAt(tile.x,tile.y),core=coreAt(tile.x,tile.y);
+      const capturePoint=points.find(point=>(point.captureTiles||[]).some(t=>t.x===tile.x&&t.y===tile.y))||null;
+      const effects=environmentState?EnvironmentEngine.effectAt(environmentState,tile.x,tile.y):[];
+      const deployable=!!(pendingCard&&phase===PHASE.CARD&&CardDatabase.isCharacter(pendingCard)&&
+        DeploymentEngine.canDeploy({stage,map,units,owner:"PLAYER",x:tile.x,y:tile.y}));
+      const attackable=!!(
+        (pendingCard&&phase===PHASE.CARD&&CardDatabase.isSpell(pendingCard))||
+        (unit&&targets.includes(unit))||
+        (core&&targets.some(target=>target.kind==="CORE"&&target.core===core))||
+        mapTargets.includes(tile)
       );
-      if(core){cell.classList.add("core-tile");cell.dataset.coreOwner=core.owner;}
-      if(capturePoint){
-        cell.classList.add("capture-point");
-        cell.dataset.captureOwner=capturePoint.owner;
-        cell.title=`${capturePoint.name}｜${capturePoint.owner}`;
-      }
-      if(reachable.has(tile.x+","+tile.y)) cell.classList.add("reachable");
-      if(pendingCard&&phase===PHASE.CARD&&CardDatabase.isCharacter(pendingCard)&&DeploymentEngine.canDeploy({stage,map,units,owner:"PLAYER",x:tile.x,y:tile.y})) cell.classList.add("deployable");
-      if(pendingCard&&phase===PHASE.CARD&&CardDatabase.isSpell(pendingCard)) cell.classList.add("attackable");
-      if((unit&&targets.includes(unit))||(core&&targets.some(target=>target.kind==="CORE"&&target.core===core))) cell.classList.add("attackable");
-      if(mapTargets.includes(tile)) cell.classList.add("attackable");
-      if(unit===selected) cell.classList.add("selected");
-      if(inspectedTile===tile) cell.classList.add("tile-inspected");
-      cell.title=tileAnnotation(tile);
-
-      const finishedClass=unit&&unit.team===TEAM.PLAYER&&unit.acted?" finished":"";
-      cell.innerHTML=
-        `<span class="icon">${ICON[tile.terrain]}${environmentState&&EnvironmentEngine.effectAt(environmentState,tile.x,tile.y).some(e=>e.type==="BURNING")?"🔥":""}${environmentState&&EnvironmentEngine.effectAt(environmentState,tile.x,tile.y).some(e=>e.type==="STEAM")?"♨":""}</span>`+
-        `${capturePoint?`<span class="capture-flag">${capturePoint.owner==="NEUTRAL"?"◇":"◆"}</span>`:""}`+
-        `${tile.elevation?`<span class="elev">H${tile.elevation}</span>`:""}`+
-        `${unit?(()=>{
-          const visual=unit.character.visualId?VisualDatabase.get("characters",unit.character.visualId):null;
-          const art=visual?.tactical?`<img src="${visual.tactical}" alt="" onerror="this.style.display='none'">`:"";
-          return `<div class="unit ${unit.team===TEAM.PLAYER?"player":"enemy"}${finishedClass}">${art}${shortName(unit.character.name)}<br>${unit.hp}</div>`;
-        })():""}`+
-        `${core?`<div class="battle-core ${core.owner==="PLAYER"?"player":"enemy"}">CORE<br>${core.hp}/${core.maxHp}</div>`:""}`;
-
-      cell.onclick=()=>handleTileClick(tile,unit,core,reachable,targets);
-      battlefield.appendChild(cell);
+      return {
+        x:tile.x,y:tile.y,terrain:tile.terrain,elevation:Number(tile.elevation||0),
+        reachable:reachable.has(tile.x+","+tile.y),attackable,deployable,
+        inspected:!!(inspectedTile&&inspectedTile.x===tile.x&&inspectedTile.y===tile.y),
+        effects:effects.map(effect=>effect.type),
+        deployment:capturePoint?.owner||null,
+        capturePoint:capturePoint?{id:capturePoint.id,name:capturePoint.name,owner:capturePoint.owner}:null,
+        core:core?{owner:core.owner,name:core.name,hp:core.hp,maxHp:core.maxHp}:null
+      };
     });
-
-    renderTurnStatus();
-    renderPanel();
-    if(inspectedTile){
-    }
-
-    endTurn.disabled=phase!==PHASE.PLAYER||!!matchResult;
-    cancelSelect.disabled=(!selected&&!pendingCard)||!!matchResult;
+    return {
+      revision:renderRevision,
+      phase,round,mode,
+      map:{width:map.width,height:map.height,tiles,objects:(map.objects||[]).map(o=>({...o}))},
+      units:units.filter(u=>u.alive).map(u=>({
+        id:u.id,x:u.x,y:u.y,team:u.team==="P"?"PLAYER":"ENEMY",
+        name:u.character.name,visualId:u.character.visualId||null,
+        hp:u.hp,maxHp:Number(u.character.combat.hp||u.hp||1),
+        selected:u===selected,finished:!!u.acted,moved:!!u.moved,acted:!!u.acted
+      }))
+    };
   }
 
+  function clickBattleTile(x,y){
+    const tile=TacticalEngine.tile(map,Number(x),Number(y));
+    if(!tile)return false;
+    const reachable=
+      selected&&phase===PHASE.PLAYER&&!selected.acted&&!selected.moved&&mode==="command"
+        ?TacticalEngine.reachable(map,units,selected)
+        :new Map();
+    const targets=
+      selected&&phase===PHASE.PLAYER&&!selected.acted&&mode==="attack"&&selectedSkill&&targetType(selectedSkill)==="SINGLE"
+        ?targetableEntities(selected,selectedSkill)
+        :[];
+    handleTileClick(tile,unitAt(tile.x,tile.y),coreAt(tile.x,tile.y),reachable,targets);
+    return true;
+  }
+
+  function render(){
+    renderRevision++;
+    renderTurnStatus();
+    renderPanel();
+    endTurn.disabled=phase!==PHASE.PLAYER||!!matchResult;
+    cancelSelect.disabled=(!selected&&!pendingCard)||!!matchResult;
+    window.dispatchEvent(new CustomEvent("cardtactics:battle-render",{detail:{revision:renderRevision}}));
+  }
+
+  function combatPreview(attacker,target,skill){
+    if(!attacker?.alive||!target?.alive||!skill||target.kind==="CORE")return null;
+    const resolved=effectiveSkill(attacker,skill);
+    const at=TacticalEngine.tile(map,attacker.x,attacker.y),dt=TacticalEngine.tile(map,target.x,target.y);
+    const weapon=attacker.character.weapons?.[resolved.weapon];
+    const type=resolved.attackType==="INHERIT"?weapon?.attackType:resolved.attackType;
+    const terrainAcc=at?.terrain==="HIGH_GROUND"&&(type==="SHOT"||type==="MAGIC")&&at.elevation>dt?.elevation
+      ?Number(TERRAINS[at.terrain]?.rangedAccuracy||0):0;
+    const terrainEva=Number(TERRAINS[dt?.terrain]?.evasion||0);
+    const ac={...attacker.character,modifiers:{...(attacker.character.modifiers||{}),
+      accuracy:Number(attacker.character.modifiers?.accuracy||0)+terrainAcc}};
+    const dc={...target.character,modifiers:{...(target.character.modifiers||{}),
+      evasion:Number(target.character.modifiers?.evasion||0)+terrainEva}};
+    return {
+      skillId:resolved.id,skillName:resolved.name,
+      hit:BattleEngine.hitChance(ac,dc,resolved),
+      crit:BattleEngine.critChance(ac,resolved),
+      terrainAcc,terrainEva
+    };
+  }
 
   function unitPresentation(unit){
     if(!unit?.alive)return null;
     const tile=TacticalEngine.tile(map,unit.x,unit.y);
     const maxHp=Number(unit.character.combat.hp||unit.hp||1);
+    const combat=unit.character.combat||{};
+    const baseHit=Math.max(BATTLE_RULES.combatParams.minHit,Math.min(BATTLE_RULES.combatParams.maxHit,
+      BATTLE_RULES.combatParams.baseHit+BattleEngine.accuracy(unit.character,{})));
     let actionState=unit.team===TEAM.ENEMY?"敵方單位":
       unit.acted?(unit.waited?"已待機":"已完成主動行動 / 可支援"):
       unit.moved?"已移動 / 可攻擊":"可移動 / 可行動";
+    const preview=selected&&selected!==unit&&selectedSkill&&mode==="attack"
+      ?combatPreview(selected,unit,selectedSkill):null;
     return {
       id:unit.id,team:unit.team,name:unit.character.name,visualId:unit.character.visualId||null,
-      hp:unit.hp,maxHp,move:Number(unit.character.combat.move||0),x:unit.x,y:unit.y,
+      hp:unit.hp,maxHp,move:Number(combat.move||0),x:unit.x,y:unit.y,
       terrain:tile?TERRAINS[tile.terrain]?.name||tile.terrain:"",elevation:Number(tile?.elevation||0),
-      actionState
+      actionState,
+      stats:{
+        atk:Number(combat.atk||0),def:Number(combat.def||0),matk:Number(combat.matk||0),mdef:Number(combat.mdef||0),
+        hit:baseHit,eva:BattleEngine.evasion(unit.character),
+        crit:BattleEngine.critChance(unit.character,{}),spd:BattleEngine.actionSpeed(unit.character,{})
+      },
+      preview
     };
   }
 
@@ -1419,6 +1459,8 @@
     getEnemyCardState:()=>enemyCardState,
     getEnemyPresentation:()=>({...enemyView}),
     getBattleMap:()=>map,
+    getBattleSnapshot:()=>battleSnapshot(),
+    clickBattleTile,
     getStage:()=>stage,
     getCores:()=>cores.map(core=>({...core})),
     getPhase:()=>phase,
