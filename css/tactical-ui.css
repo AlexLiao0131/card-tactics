@@ -56,7 +56,8 @@
 .tactical-unit-name{font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tactical-unit-hp{height:8px;margin-top:4px;border-radius:99px;background:#351b1b;overflow:hidden}
 .tactical-unit-hp i{display:block;height:100%;background:#55a96a}
-.tactical-unit-hp-text,.tactical-unit-stats,.tactical-unit-preview,.tactical-unit-status,.tactical-unit-position{margin-top:2px;font-size:10px;color:#d8e1ec}\n.tactical-unit-stats{line-height:1.35;color:#cfe2f4}.tactical-unit-preview{color:#ffe09a;font-weight:900}
+.tactical-unit-hp-text,.tactical-unit-stats,.tactical-unit-preview,.tactical-unit-status,.tactical-unit-position{margin-top:2px;font-size:10px;color:#d8e1ec}
+.tactical-unit-stats{line-height:1.35;color:#cfe2f4}.tactical-unit-preview{color:#ffe09a;font-weight:900}
 .tactical-unit-status{color:#f0d89b;font-weight:800}
 .tactical-unit-position{color:#aebbc8}
 .tactical-unit-close{
@@ -78,3 +79,9 @@
 #diagnosticsSummary{margin:8px 0;padding:9px;border-radius:8px;background:#05090e;color:#cfe2f4;white-space:pre-wrap;font:11px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 .diagnostics-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 @media(max-width:700px){.diagnostics-panel{padding:10px}.diagnostics-actions{grid-template-columns:1fr}#diagnosticsSummary{font-size:10px}}
+
+/* Opponent hand stays visibly docked at the top edge; Core HUD remains the higher-value center HUD. */
+@media(max-width:700px){
+  .opponent-hand{top:-28px}
+  .opponent-meta{top:58px}
+}
