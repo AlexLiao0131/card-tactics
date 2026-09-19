@@ -874,15 +874,31 @@
     renderTurnStatus();
     renderPanel();
     if(inspectedTile){
-      tacticalInfo.textContent+=(tacticalInfo.textContent?"\n\n":"")+`【格子資訊】\n${tileAnnotation(inspectedTile)}`;
     }
 
     endTurn.disabled=phase!==PHASE.PLAYER||!!matchResult;
     cancelSelect.disabled=(!selected&&!pendingCard)||!!matchResult;
   }
 
+
+  function unitPresentation(unit){
+    if(!unit?.alive)return null;
+    const tile=TacticalEngine.tile(map,unit.x,unit.y);
+    const maxHp=Number(unit.character.combat.hp||unit.hp||1);
+    let actionState=unit.team===TEAM.ENEMY?"敵方單位":
+      unit.acted?(unit.waited?"已待機":"已完成主動行動 / 可支援"):
+      unit.moved?"已移動 / 可攻擊":"可移動 / 可行動";
+    return {
+      id:unit.id,team:unit.team,name:unit.character.name,visualId:unit.character.visualId||null,
+      hp:unit.hp,maxHp,move:Number(unit.character.combat.move||0),x:unit.x,y:unit.y,
+      terrain:tile?TERRAINS[tile.terrain]?.name||tile.terrain:"",elevation:Number(tile?.elevation||0),
+      actionState
+    };
+  }
+
   function handleTileClick(tile,unit,core,reachable,targets){
     inspectedTile=tile;
+    window.dispatchEvent(new CustomEvent("cardtactics:inspection"));
     if(matchResult){render();return;}
     if(phase===PHASE.CARD){
       if(pendingCard&&CardDatabase.isSpell(pendingCard)){resolveSpellAt(pendingCard,tile);return;}
@@ -1002,11 +1018,6 @@
     const {attacker,defender,skill,candidates}=pendingEngagement;
     appendEngagementHeader(attacker,defender,skill);
 
-    tacticalInfo.textContent=
-      `交戰準備｜${attacker.character.name} → ${defender.character.name}\n`+
-      `${skill.name}\n`+
-      `選擇要參戰的支援角色與技能；不選就不消耗資源。`;
-
     candidates.forEach(({ally,skills})=>{
       const row=document.createElement("div");
       row.className="support-choice";
@@ -1057,10 +1068,6 @@
     });
     prep.counterSkills=prep.counterSkills.filter(counterSkill=>TacticalEngine.canTarget(map,defender,attacker,counterSkill));
 
-    tacticalInfo.textContent=
-      `敵方攻擊｜${attacker.character.name} → ${defender.character.name}\n`+
-      `${skill.name}｜請選擇反應。`;
-
     const guards=guardCandidates();
     addActionButton("反擊",()=>chooseEnemyReaction("COUNTER"),prep.counterSkills.length===0);
     addActionButton("防禦",()=>chooseEnemyReaction("DEFENSE"),prep.defenseMethods.length===0);
@@ -1080,10 +1087,6 @@
       canUseSkill
     });
     prep.counterSkills=prep.counterSkills.filter(counterSkill=>TacticalEngine.canTarget(map,defender,attacker,counterSkill));
-
-    tacticalInfo.textContent=
-      `反擊選擇｜${defender.character.name}\n`+
-      `敵方：${attacker.character.name}｜${skill.name}`;
 
     prep.counterSkills.forEach(counterSkill=>{
       addActionButton(
@@ -1109,10 +1112,6 @@
     });
     prep.counterSkills=prep.counterSkills.filter(counterSkill=>TacticalEngine.canTarget(map,defender,attacker,counterSkill));
 
-    tacticalInfo.textContent=
-      `防禦方式｜${defender.character.name}\n`+
-      `敵方：${attacker.character.name}｜${skill.name}`;
-
     prep.defenseMethods.forEach(method=>{
       addActionButton(
         `${method.name}｜${method.sourceName||method.method}`,
@@ -1131,11 +1130,6 @@
     const {attacker,defender,skill}=pendingEnemyAttack;
     appendEngagementHeader(attacker,defender,skill);
     const guards=guardCandidates();
-
-    tacticalInfo.textContent=
-      `援護防禦｜${attacker.character.name} → ${defender.character.name}\n`+
-      `${skill.name}\n`+
-      `僅顯示目標上下左右、且具有 canGuardAlly 能力的友軍。`;
 
     guards.forEach(({guardian,profiles})=>{
       addActionButton(
@@ -1169,10 +1163,6 @@
       .filter(counterSkill=>TacticalEngine.canTarget(map,defender,attacker,counterSkill));
 
     if(!selectedGuardInterception){
-      tacticalInfo.textContent=
-        `援護防禦｜${guardian.character.name} 保護 ${defender.character.name}\n`+
-        `${attacker.character.name}｜${skill.name}\n`+
-        `請選擇援護者的防禦方式。`;
 
       guardianMethods.forEach(method=>{
         addActionButton(
@@ -1193,11 +1183,6 @@
       return;
     }
 
-    tacticalInfo.textContent=
-      `援護成立｜${guardian.character.name} 保護 ${defender.character.name}\n`+
-      `${attacker.character.name}｜${skill.name}\n`+
-      `攻擊完整轉向援護者；原目標仍可選擇是否反擊。`;
-
     addActionButton("援護承受｜原目標不反擊",()=>executeEnemyAttack(null,selectedGuardInterception));
     counterSkills.forEach(counterSkill=>{
       addActionButton(
@@ -1213,16 +1198,10 @@
     skillBar.classList.remove("enemy-reaction-panel","command-panel-collapsed","engagement-overlay");
 
     if(matchResult){
-      tacticalInfo.textContent=matchResult==="VICTORY"
-        ?"戰鬥勝利。按「重置戰場」可重新開始。"
-        :"戰鬥失敗。按「重置戰場」可重新開始。";
       return;
     }
 
     if(phase===PHASE.CARD){
-      tacticalInfo.textContent=pendingCard
-        ?`部署角色卡｜${pendingCard.name}\n請點選戰場上亮起的部署區格子；可手動選擇出生位置。`
-        :`卡牌階段｜💎 ${cardState?.crystals||0}\n請從上方手牌選擇角色卡或卡牌魔法；角色卡需再手動選部署格。`;
       return;
     }
 
@@ -1242,21 +1221,15 @@
           renderEnemyReaction();
         }
       }else{
-        tacticalInfo.textContent="敵方回合處理中。";
       }
       return;
     }
 
     if(phase!==PHASE.PLAYER){
-      tacticalInfo.textContent="戰鬥處理中。";
       return;
     }
 
     if(!selected){
-      tacticalInfo.textContent=
-        allFinished(TEAM.PLAYER)
-          ?"我方所有角色已完成行動，請按「結束我方回合」。"
-          :"點選尚未行動的我方角色開始。";
       return;
     }
 
@@ -1264,11 +1237,6 @@
     const actionState=selected.acted
       ?(selected.waited?"已待機":"已完成主動行動 / 可支援")
       :(selected.moved?"已移動 / 可攻擊":"可移動 / 可行動");
-
-    tacticalInfo.textContent=
-      `${selected.character.name}｜HP ${selected.hp}/${selected.character.combat.hp}｜MOVE ${selected.character.combat.move}\n`+
-      `(${selected.x},${selected.y}) ${TERRAINS[tile.terrain].name} 高度${tile.elevation}\n`+
-      `狀態：${actionState}`;
 
     if(mode==="support-select"&&pendingEngagement){
       renderSupportSelection();
@@ -1284,9 +1252,7 @@
       }
       addCommandPanelClose();
       if(!selected.moved){
-        tacticalInfo.textContent+="\n可直接點亮起的格子移動，或直接選擇下方指令。";
       }else if(actionController.pendingMove()?.unitId===selected.id){
-        tacticalInfo.textContent+="\n移動尚未確定；執行其他行動前可取消。";
         addActionButton("取消移動",cancelPendingMove);
       }
 
@@ -1337,7 +1303,6 @@
     if(mode==="variant-menu"&&selectedSkill){
       if(commandPanelCollapsed){renderCollapsedCommandButton();return;}
       addCommandPanelClose();
-      tacticalInfo.textContent+=`\n${selectedSkill.name}｜選擇使用方式。`;
       skillVariants(selectedSkill).forEach(variant=>{
         addActionButton(variant.name||variant.id,()=>{
           selectedSkillVariant=variant;
@@ -1352,7 +1317,6 @@
 
     if(mode==="copy-skill-select"&&pendingCopySkill){
       addCommandPanelClose();
-      tacticalInfo.textContent+=`\n吸血完成｜選擇要複製 ${pendingCopySkill.target.character.name} 的一項能力。`;
       pendingCopySkill.options.forEach(skill=>addActionButton(skill.name,()=>{
         EffectEngine.grantSkill(pendingCopySkill.attacker,skill.id,{source:pendingCopySkill.target,duration:pendingCopySkill.duration,replaceGroup:"BLOOD_COPY"});
         pushLog(`${pendingCopySkill.attacker.character.name} 從血液中複製了「${skill.name}」。`,"BATTLE");
@@ -1366,7 +1330,6 @@
       addCommandPanelClose();
       const menuName=mode==="special-menu"?"魔法／特殊技能":"攻擊";
       if(!shownSkills.length){
-        tacticalInfo.textContent+=`\n${menuName}：目前沒有可用技能。`;
       }
 
       shownSkills.forEach(skill=>{
@@ -1395,13 +1358,11 @@
 
     if(mode==="map-target"&&selectedSkill){
       const range=TacticalEngine.range(selectedSkill);
-      tacticalInfo.textContent+=`\n${selectedSkill.name}｜射程 ${range.min}-${range.max}｜AOE ${selectedSkill.radius||0}｜請點選亮起的地圖格。`;
       return;
     }
 
     if(mode==="attack"&&selectedSkill){
       const range=TacticalEngine.range(selectedSkill);
-      tacticalInfo.textContent+=`\n${selectedSkill.name}｜射程 ${range.min}-${range.max}｜請選擇目標。`;
 
     }
   }
@@ -1449,6 +1410,10 @@
     setBattleLogTab:type=>{BattleLog.setActive(logState,type);window.dispatchEvent(new CustomEvent("cardtactics:log"));},
     getActionMenuAnchor:()=>phase===PHASE.PLAYER&&selected&&!commandPanelCollapsed&&mode!=="support-select"
       ?{x:selected.x,y:selected.y}:null,
+    getInspectedUnitPresentation:()=>{
+      const unit=inspectedTile?unitAt(inspectedTile.x,inspectedTile.y):selected;
+      return unitPresentation(unit||selected);
+    },
     playCard:selectCardForPlay,
     endCardPhase,
     cancelCard:()=>{pendingCard=null;render();},
