@@ -135,3 +135,9 @@
 
 /* Target selection uses the fixed toolbar cancel control; no floating target-back panel may cover the battlefield. */
 #skillBar.targeting-mode{display:none!important;pointer-events:none!important;}
+
+/* Battlefield camera controls are separate from the turn toolbar/Core HUD. */
+.battle-view-controls{position:absolute;z-index:58;right:10px;top:128px;display:flex;align-items:center;gap:4px;padding:4px;border:1px solid #647487;border-radius:9px;background:#081018d9;box-shadow:0 6px 18px #0007;pointer-events:auto}
+.battle-view-controls button{width:auto;min-width:36px;min-height:34px;margin:0;padding:6px 8px;background:#142231;color:#edf4fb;border:1px solid #53677c;border-radius:6px;font-size:11px;font-weight:800;touch-action:manipulation}
+#projectionToggle{min-width:68px}
+@media(max-width:700px){.battle-view-controls{right:5px;top:146px;padding:3px;gap:3px}.battle-view-controls button{min-width:34px;min-height:32px;padding:5px 7px;font-size:10px}#projectionToggle{min-width:62px}}
