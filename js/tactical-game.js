@@ -53,6 +53,39 @@
   }
 
 
+
+  function applyForcedMovement(source,target,distance,{name="強制位移"}={}){
+    const result=PostEngagementEngine.forcedMove({map,units,source,target,effect:{type:"KNOCKBACK",distance}});
+    if(result.applied){
+      pushLog(`${target.character.name} 被${name}推離 ${result.steps.length} 格。`,"BATTLE");
+      if(result.falls?.length)pushLog(`${target.character.name} 墜落｜墜落傷害 ${result.fallDamage}｜HP ${target.hp}。`,"BATTLE");
+      result.steps.forEach(()=>enterTile(target));
+    }
+    if(result.defeated)handleDefeated(target,source,{type:"ENVIRONMENT_FORCE",name});
+    return result;
+  }
+
+  function traverseUnitPath(unit,path,{kind="UNIT"}={}){
+    for(const tile of path||[]){
+      unit.x=tile.x;unit.y=tile.y;enterTile(unit);
+      if(!unit.alive)return {completed:false,reason:"DEFEATED"};
+      const interaction=EnvironmentEngine.pathInteraction({state:environmentState,x:tile.x,y:tile.y,kind});
+      const forced=interaction.effects?.find(e=>e.type==="FORCED_MOVE");
+      if(forced){
+        applyForcedMovement({x:tile.x,y:tile.y},unit,forced.distance,{name:forced.effect?.type==="FIRE_TORNADO"?"火龍捲":"龍捲風"});
+        return {completed:false,reason:"ENVIRONMENT_FORCE"};
+      }
+    }
+    return {completed:true};
+  }
+
+  function damageUnitFlat(unit,damage,sourceName){
+    if(!unit?.alive)return;
+    unit.hp=Math.max(0,unit.hp-Math.max(0,Number(damage||0)));
+    pushLog(`${sourceName} → ${unit.character.name}｜${damage} 傷害｜HP ${unit.hp}。`,"BATTLE");
+    if(unit.hp<=0&&unit.alive){unit.alive=false;handleDefeated(unit,null,{type:"CARD_SPELL",name:sourceName});}
+  }
+
   function createMap(){
     return MapDatabase.createMap(stage.mapId);
   }
