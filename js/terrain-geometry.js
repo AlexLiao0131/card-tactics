@@ -12,7 +12,7 @@ function build(map){
       if(!neighbor)return; // no artificial map-boundary wall
       const bottom=Number(neighbor.elevation||0);
       if(elevation<=bottom)return;
-      sides.push({id:`side:${tile.x},${tile.y}:${edge}`,tile,x:tile.x,y:tile.y,edge,topElevation:elevation,bottomElevation:bottom,levels:elevation-bottom});
+      for(let level=elevation;level>bottom;level--){sides.push({id:`side:${tile.x},${tile.y}:${edge}:${level}`,tile,x:tile.x,y:tile.y,edge,topElevation:level,bottomElevation:level-1,levels:1});}
     });
   }
   return{tops,sides};

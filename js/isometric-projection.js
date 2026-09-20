@@ -6,7 +6,7 @@ function point(x,y,e,m,o){const g=grid(x,y,m,o.rotation);if(o.projection==="TOP"
 function corners(p,o){if(o.projection==="TOP"){const h=38;return[{x:p.x-h,y:p.y-h},{x:p.x+h,y:p.y-h},{x:p.x+h,y:p.y+h},{x:p.x-h,y:p.y+h}]}return[{x:p.x,y:p.y-o.th/2},{x:p.x+o.tw/2,y:p.y},{x:p.x,y:p.y+o.th/2},{x:p.x-o.tw/2,y:p.y}]}
 function projectedEdge(worldEdge,rotation=0){return (worldEdge-((rotation%4)+4)%4+4)%4}
 function rowDepth(x,y,m,o){return 1000+point(x,y,0,m,o).y*10}
-function topDepth(tile,m,o){return rowDepth(tile.x,tile.y,m,o)+6}
-function faceDepth(face,m,o){const e=projectedEdge(face.edge,o.rotation),dirs=[[1,0],[0,1],[-1,0],[0,-1]],d=dirs[face.edge]||[0,0],neighbor=rowDepth(face.x+d[0],face.y+d[1],m,o),owner=rowDepth(face.x,face.y,m,o);return Math.max(owner,neighbor)+4}
+function topDepth(tile,m,o){const p=point(tile.x,tile.y,Number(tile.elevation||0),m,o);return 1000+p.y*10+6}
+function faceDepth(face,m,o){const p=point(face.x,face.y,Number(face.bottomElevation||0),m,o);return 1000+p.y*10+4}
 window.IsometricProjection={rotated,grid,point,corners,projectedEdge,rowDepth,topDepth,faceDepth};
 })();
