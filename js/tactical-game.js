@@ -64,33 +64,8 @@
     return MapDatabase.createMap(stage.mapId);
   }
 
-  function createSkillResources(character){
-    const resources={};
-    SkillDatabase.list(character.skills).forEach(skill=>{
-      const resource=skill.resource||{type:"UNLIMITED"};
-      if(resource.type==="USES"){
-        resources[skill.id]={type:"USES",remaining:Number(resource.max||0),max:Number(resource.max||0)};
-      }else{
-        resources[skill.id]={type:resource.type||"UNLIMITED"};
-      }
-    });
-    return resources;
-  }
-
   function createUnit(id,team,characterId,x,y){
-    const sourceCharacter=CHARACTERS[characterId];
-    const character=JSON.parse(JSON.stringify(sourceCharacter));
-    return {
-      id,team,character,x,y,z:Number(TacticalEngine.elevation(TacticalEngine.tile(map,x,y))||0),
-      hp:character.combat.hp,
-      alive:true,
-      moved:false,
-      acted:false,
-      waited:false,
-      skillResources:createSkillResources(character),
-      effects:[],
-      grantedSkills:[]
-    };
+    return UnitRuntimeEngine.create({id,team,characterId,x,y,map});
   }
 
   function resetBattle(){
@@ -242,48 +217,14 @@
     return name.replace(/（.*?）/g,"").slice(0,4);
   }
 
-  function living(team){
-    return units.filter(u=>u.alive&&u.team===team);
-  }
-
-  function resetActions(team){
-    living(team).forEach(u=>{
-      u.moved=false;
-      u.acted=false;
-      u.waited=false;
-    });
-  }
-
-  function allFinished(team){
-    const alive=living(team);
-    return alive.length>0&&alive.every(u=>u.acted);
-  }
-
-  function resourceFor(unit,skill){
-    return unit.skillResources[skill.id]||{type:"UNLIMITED"};
-  }
-
-  function canUseSkill(unit,skill){
-    if(skill?.approach&&unit?.moved)return false;
-    const r=resourceFor(unit,skill);
-    if(r.type==="USES") return r.remaining>0;
-    return true;
-  }
-
-  function consumeSkill(unit,skill){
-    const r=resourceFor(unit,skill);
-    if(r.type==="USES"&&r.remaining>0) r.remaining--;
-  }
-
-  function resourceLabel(unit,skill){
-    const r=resourceFor(unit,skill);
-    if(r.type==="USES") return `${r.remaining}/${r.max}`;
-    return "∞";
-  }
-
-  function targetType(skill){
-    return skill?.targetType||"SINGLE";
-  }
+  function living(team){return UnitRuntimeEngine.living(units,team);}
+  function resetActions(team){return UnitRuntimeEngine.resetActions(units,team);}
+  function allFinished(team){return UnitRuntimeEngine.allFinished(units,team);}
+  function resourceFor(unit,skill){return UnitRuntimeEngine.resourceFor(unit,skill);}
+  function canUseSkill(unit,skill){return UnitRuntimeEngine.canUseSkill(unit,skill);}
+  function consumeSkill(unit,skill){return UnitRuntimeEngine.consumeSkill(unit,skill);}
+  function resourceLabel(unit,skill){return UnitRuntimeEngine.resourceLabel(unit,skill);}
+  function targetType(skill){return UnitRuntimeEngine.targetType(skill);}
 
   function clearEngagement(){
     pendingEngagement=null;
