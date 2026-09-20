@@ -962,220 +962,123 @@
     return {hit,evade:100-hit};
   }
 
-  function appendEngagementUnit(unit,side,oddsLabel=""){
+  function engagementUnitPresentation(unit,attacker,defender,odds){
     const max=Math.max(1,Number(unit?.character?.combat?.hp||unit?.hp||1));
     const hp=Math.max(0,Number(unit?.hp||0));
-    const pct=Math.max(0,Math.min(100,hp/max*100));
-    const card=document.createElement("div");
-    card.className=`engagement-unit engagement-${side}`;
-    card.innerHTML=
-      `<div class="engagement-figure"><span>${shortName(unit.character.name)}</span></div>`+
-      `<strong>${unit.character.name}</strong>`+
-      `<div class="engagement-hp"><i style="width:${pct}%"></i></div>`+
-      `<small>HP ${hp} / ${max}</small>`+
-      (oddsLabel?`<small><b>${oddsLabel}</b></small>`:"");
-    return card;
+    return {
+      id:unit.id,name:unit.character.name,shortName:shortName(unit.character.name),
+      team:unit.team,hp,maxHp:max,hpPct:Math.max(0,Math.min(100,hp/max*100)),
+      oddsLabel:!odds?"":unit===attacker?`命中率 ${odds.hit}%`:unit===defender?`迴避率 ${odds.evade}%`:""
+    };
   }
 
-  function appendEngagementHeader(attacker,defender,skill){
-    skillBar.classList.add("engagement-overlay");
-    const stage=document.createElement("div");
-    stage.className="engagement-stage";
+  function engagementPresentation(){
+    const attack=pendingEngagement||pendingEnemyAttack;
+    if(!attack)return null;
+    const {attacker,defender,skill}=attack,odds=engagementOdds(attacker,defender,skill);
     const player=attacker.team===TEAM.PLAYER?attacker:defender;
     const enemy=attacker.team===TEAM.ENEMY?attacker:defender;
-    const odds=engagementOdds(attacker,defender,skill);
-    const labelFor=unit=>{
-      if(!odds)return "";
-      if(unit===attacker)return `命中率 ${odds.hit}%`;
-      if(unit===defender)return `迴避率 ${odds.evade}%`;
-      return "";
+    const model={
+      mode,skillName:skill?.name||"交戰",
+      player:engagementUnitPresentation(player,attacker,defender,odds),
+      enemy:engagementUnitPresentation(enemy,attacker,defender,odds),
+      groups:[],actions:[]
     };
-    stage.appendChild(appendEngagementUnit(player,"player",labelFor(player)));
-    const center=document.createElement("div");
-    center.className="engagement-versus";
-    center.innerHTML=`<b>VS</b><span>${skill?.name||"交戰"}</span>`;
-    stage.appendChild(center);
-    stage.appendChild(appendEngagementUnit(enemy,"enemy",labelFor(enemy)));
-    skillBar.appendChild(stage);
-  }
+    const action=(id,label,disabled=false,payload=null)=>model.actions.push({id,label,disabled,payload});
 
-  function renderSupportSelection(){
-    const {attacker,defender,skill,candidates}=pendingEngagement;
-    appendEngagementHeader(attacker,defender,skill);
-
-    candidates.forEach(({ally,skills})=>{
-      const row=document.createElement("div");
-      row.className="support-choice";
-
-      const title=document.createElement("div");
-      title.textContent=`${ally.character.name}${ally.acted?"｜已完成主動行動":""}`;
-      row.appendChild(title);
-
-      const none=document.createElement("button");
-      none.textContent="不支援";
-      none.className="action-button";
-      none.onclick=()=>{
-        supportSelection.delete(ally.id);
-        render();
-      };
-      row.appendChild(none);
-
-      skills.forEach(skill=>{
-        const button=document.createElement("button");
-        const chosen=supportSelection.get(ally.id)===skill;
-        button.textContent=`${chosen?"✓ ":""}${skill.name}｜${resourceLabel(ally,skill)}`;
-        button.className="action-button";
-        button.onclick=()=>{
-          supportSelection.set(ally.id,skill);
-          render();
-        };
-        row.appendChild(button);
-      });
-
-      skillBar.appendChild(row);
-    });
-
-    addActionButton("開始交戰",confirmEngagement);
-    addActionButton("返回",()=>{
-      clearEngagement();
-      mode="attack";
-      render();
-    });
-  }
-
-  function renderEnemyReaction(){
-    const {attacker,defender,skill}=pendingEnemyAttack;
-    appendEngagementHeader(attacker,defender,skill);
-    const prep=BattleResolution.prepareSingleTargetReaction({
-      defender,
-      attacker,
-      canUseSkill
-    });
-    prep.counterSkills=prep.counterSkills.filter(counterSkill=>TacticalEngine.canTarget(map,defender,attacker,counterSkill));
-
-    const guards=guardCandidates();
-    addActionButton("反擊",()=>chooseEnemyReaction("COUNTER"),prep.counterSkills.length===0);
-    addActionButton("防禦",()=>chooseEnemyReaction("DEFENSE"),prep.defenseMethods.length===0);
-    addActionButton("迴避",()=>chooseEnemyReaction("EVADE"));
-    addActionButton("援護防禦",()=>{
-      mode="enemy-guard-select";
-      render();
-    },guards.length===0);
-  }
-
-  function renderCounterSelection(){
-    const {attacker,defender,skill}=pendingEnemyAttack;
-    appendEngagementHeader(attacker,defender,skill);
-    const prep=BattleResolution.prepareSingleTargetReaction({
-      defender,
-      attacker,
-      canUseSkill
-    });
-    prep.counterSkills=prep.counterSkills.filter(counterSkill=>TacticalEngine.canTarget(map,defender,attacker,counterSkill));
-
-    prep.counterSkills.forEach(counterSkill=>{
-      addActionButton(
-        `${counterSkill.name}｜射程 ${counterSkill.range.min}-${counterSkill.range.max}｜${resourceLabel(defender,counterSkill)}`,
-        ()=>executeEnemyAttack(BattleResolution.createReaction("COUNTER",{skill:counterSkill}))
-      );
-    });
-
-    addActionButton("返回",()=>{
-      pendingReactionType=null;
-      mode="enemy-reaction";
-      render();
-    });
-  }
-
-  function renderDefenseSelection(){
-    const {attacker,defender,skill}=pendingEnemyAttack;
-    appendEngagementHeader(attacker,defender,skill);
-    const prep=BattleResolution.prepareSingleTargetReaction({
-      defender,
-      attacker,
-      canUseSkill
-    });
-    prep.counterSkills=prep.counterSkills.filter(counterSkill=>TacticalEngine.canTarget(map,defender,attacker,counterSkill));
-
-    prep.defenseMethods.forEach(method=>{
-      addActionButton(
-        `${method.name}｜${method.sourceName||method.method}`,
-        ()=>executeEnemyAttack(BattleResolution.createReaction("DEFENSE",{methodId:method.id}))
-      );
-    });
-
-    addActionButton("返回",()=>{
-      pendingReactionType=null;
-      mode="enemy-reaction";
-      render();
-    });
-  }
-
-  function renderGuardSelection(){
-    const {attacker,defender,skill}=pendingEnemyAttack;
-    appendEngagementHeader(attacker,defender,skill);
-    const guards=guardCandidates();
-
-    guards.forEach(({guardian,profiles})=>{
-      addActionButton(
-        `${guardian.character.name}｜${profiles.map(p=>p.name).join("／")}`,
-        ()=>chooseGuardian(guardian)
-      );
-    });
-
-    addActionButton("返回",()=>{
-      selectedGuardian=null;
-      selectedGuardInterception=null;
-      mode="enemy-reaction";
-      render();
-    });
-  }
-
-  function renderGuardReaction(){
-    const {attacker,defender,skill}=pendingEnemyAttack;
-    appendEngagementHeader(attacker,defender,skill);
-    const guardian=selectedGuardian;
-    if(!guardian?.alive){
-      selectedGuardian=null;
-      selectedGuardInterception=null;
-      mode="enemy-reaction";
-      render();
-      return;
+    if(mode==="support-select"&&pendingEngagement){
+      for(const {ally,skills} of pendingEngagement.candidates){
+        model.groups.push({
+          id:ally.id,title:`${ally.character.name}${ally.acted?"｜已完成主動行動":""}`,
+          actions:[
+            {id:"SUPPORT_NONE",label:"不支援",payload:{allyId:ally.id}},
+            ...skills.map(s=>({id:"SUPPORT_SKILL",label:`${supportSelection.get(ally.id)===s?"✓ ":""}${s.name}｜${resourceLabel(ally,s)}`,payload:{allyId:ally.id,skillId:s.id}}))
+          ]
+        });
+      }
+      action("CONFIRM_ENGAGEMENT","開始交戰");
+      action("BACK_SUPPORT","返回");
+      return model;
     }
 
-    const guardianMethods=BattleResolution.guardProfiles(guardian);
-    const counterSkills=BattleResolution.counterSkills({defender,attacker,canUseSkill})
-      .filter(counterSkill=>TacticalEngine.canTarget(map,defender,attacker,counterSkill));
+    if(!pendingEnemyAttack)return model;
+    const prep=BattleResolution.prepareSingleTargetReaction({defender,attacker,canUseSkill});
+    prep.counterSkills=prep.counterSkills.filter(s=>TacticalEngine.canTarget(map,defender,attacker,s));
 
-    if(!selectedGuardInterception){
+    if(mode==="enemy-counter-select"){
+      prep.counterSkills.forEach(s=>action("COUNTER_SKILL",`${s.name}｜射程 ${s.range.min}-${s.range.max}｜${resourceLabel(defender,s)}`,false,{skillId:s.id}));
+      action("BACK_REACTION","返回");
+    }else if(mode==="enemy-defense-select"){
+      prep.defenseMethods.forEach(m=>action("DEFENSE_METHOD",`${m.name}｜${m.sourceName||m.method}`,false,{methodId:m.id}));
+      action("BACK_REACTION","返回");
+    }else if(mode==="enemy-guard-select"){
+      guardCandidates().forEach(({guardian,profiles})=>action("GUARDIAN",`${guardian.character.name}｜${profiles.map(p=>p.name).join("／")}`,false,{guardianId:guardian.id}));
+      action("BACK_GUARD","返回");
+    }else if(mode==="enemy-guard-reaction"){
+      const guardian=selectedGuardian;
+      if(!guardian?.alive)return {...model,invalidGuardian:true};
+      const guardianMethods=BattleResolution.guardProfiles(guardian);
+      const counterSkills=BattleResolution.counterSkills({defender,attacker,canUseSkill}).filter(s=>TacticalEngine.canTarget(map,defender,attacker,s));
+      if(!selectedGuardInterception){
+        guardianMethods.forEach(m=>action("GUARD_METHOD",`${m.name}｜${m.sourceName||m.method}`,false,{methodId:m.id}));
+        action("BACK_GUARD_METHOD","返回");
+      }else{
+        action("GUARD_ACCEPT","援護承受｜原目標不反擊");
+        counterSkills.forEach(s=>action("GUARD_COUNTER",`原目標反擊｜${s.name}｜${resourceLabel(defender,s)}`,false,{skillId:s.id}));
+        action("BACK_GUARD_INTERCEPTION","返回防禦方式");
+      }
+    }else{
+      const guards=guardCandidates();
+      action("REACTION_COUNTER","反擊",prep.counterSkills.length===0);
+      action("REACTION_DEFENSE","防禦",prep.defenseMethods.length===0);
+      action("REACTION_EVADE","迴避");
+      action("REACTION_GUARD","援護防禦",guards.length===0);
+    }
+    return model;
+  }
 
-      guardianMethods.forEach(method=>{
-        addActionButton(
-          `${method.name}｜${method.sourceName||method.method}`,
-          ()=>{
-            selectedGuardInterception=BattleResolution.createGuardInterception(guardian,method.id);
-            render();
-          }
-        );
-      });
-
-      addActionButton("返回",()=>{
-        selectedGuardian=null;
-        selectedGuardInterception=null;
-        mode="enemy-guard-select";
-        render();
-      });
+  function handleEngagementUIAction(id,payload={}){
+    if(id==="SUPPORT_NONE"){
+      supportSelection.delete(payload.allyId);render();return;
+    }
+    if(id==="SUPPORT_SKILL"){
+      const entry=pendingEngagement?.candidates?.find(c=>c.ally.id===payload.allyId);
+      const skill=entry?.skills?.find(s=>s.id===payload.skillId);
+      if(skill)supportSelection.set(payload.allyId,skill);
+      render();return;
+    }
+    if(id==="CONFIRM_ENGAGEMENT"){confirmEngagement();return;}
+    if(id==="BACK_SUPPORT"){clearEngagement();mode="attack";render();return;}
+    if(id==="REACTION_COUNTER"){chooseEnemyReaction("COUNTER");return;}
+    if(id==="REACTION_DEFENSE"){chooseEnemyReaction("DEFENSE");return;}
+    if(id==="REACTION_EVADE"){chooseEnemyReaction("EVADE");return;}
+    if(id==="REACTION_GUARD"){mode="enemy-guard-select";render();return;}
+    if(id==="BACK_REACTION"){pendingReactionType=null;mode="enemy-reaction";render();return;}
+    if(id==="COUNTER_SKILL"){
+      const skill=BattleResolution.counterSkills({defender:pendingEnemyAttack?.defender,attacker:pendingEnemyAttack?.attacker,canUseSkill}).find(s=>s.id===payload.skillId);
+      if(skill)executeEnemyAttack(BattleResolution.createReaction("COUNTER",{skill}));
       return;
     }
-
-    addActionButton("援護承受｜原目標不反擊",()=>executeEnemyAttack(null,selectedGuardInterception));
-    counterSkills.forEach(counterSkill=>{
-      addActionButton(
-        `原目標反擊｜${counterSkill.name}｜${resourceLabel(defender,counterSkill)}`,
-        ()=>executeEnemyAttack(BattleResolution.createReaction("COUNTER",{skill:counterSkill}),selectedGuardInterception)
-      );
-    });
-    addActionButton("返回防禦方式",()=>{selectedGuardInterception=null;render();});
+    if(id==="DEFENSE_METHOD"){executeEnemyAttack(BattleResolution.createReaction("DEFENSE",{methodId:payload.methodId}));return;}
+    if(id==="GUARDIAN"){
+      const guardian=units.find(u=>u.id===payload.guardianId&&u.alive);
+      if(guardian)chooseGuardian(guardian);
+      return;
+    }
+    if(id==="BACK_GUARD"){selectedGuardian=null;selectedGuardInterception=null;mode="enemy-reaction";render();return;}
+    if(id==="GUARD_METHOD"){
+      if(selectedGuardian){selectedGuardInterception=BattleResolution.createGuardInterception(selectedGuardian,payload.methodId);render();}
+      return;
+    }
+    if(id==="BACK_GUARD_METHOD"){selectedGuardian=null;selectedGuardInterception=null;mode="enemy-guard-select";render();return;}
+    if(id==="GUARD_ACCEPT"){executeEnemyAttack(null,selectedGuardInterception);return;}
+    if(id==="GUARD_COUNTER"){
+      const {attacker,defender}=pendingEnemyAttack||{};
+      const skill=BattleResolution.counterSkills({defender,attacker,canUseSkill}).find(s=>s.id===payload.skillId);
+      if(skill)executeEnemyAttack(BattleResolution.createReaction("COUNTER",{skill}),selectedGuardInterception);
+      return;
+    }
+    if(id==="BACK_GUARD_INTERCEPTION"){selectedGuardInterception=null;render();}
   }
 
   function renderPanel(){
@@ -1194,17 +1097,11 @@
       if(pendingEnemyAttack&&targetType(pendingEnemyAttack.skill)==="SINGLE"){
         commandPanelCollapsed=false;
         skillBar.classList.add("enemy-reaction-panel");
-        if(mode==="enemy-counter-select"){
-          renderCounterSelection();
-        }else if(mode==="enemy-defense-select"){
-          renderDefenseSelection();
-        }else if(mode==="enemy-guard-select"){
-          renderGuardSelection();
-        }else if(mode==="enemy-guard-reaction"){
-          renderGuardReaction();
-        }else{
-          renderEnemyReaction();
+        const model=engagementPresentation();
+        if(model?.invalidGuardian){
+          selectedGuardian=null;selectedGuardInterception=null;mode="enemy-reaction";render();return;
         }
+        window.TacticalUIController?.renderEngagement?.();
       }else{
       }
       return;
@@ -1224,7 +1121,7 @@
       :(selected.moved?"已移動 / 可攻擊":"可移動 / 可行動");
 
     if(mode==="support-select"&&pendingEngagement){
-      renderSupportSelection();
+      window.TacticalUIController?.renderEngagement?.();
       return;
     }
 
@@ -1391,6 +1288,8 @@
     getPhase:()=>phase,
     getPendingCard:()=>pendingCard,
     getBattleLog:()=>({active:logState.active,entries:BattleLog.list(logState).map(entry=>({...entry}))}),
+    getEngagementPresentation:engagementPresentation,
+    handleEngagementUIAction,
     setBattleLogTab:type=>{BattleLog.setActive(logState,type);window.dispatchEvent(new CustomEvent("cardtactics:log"));},
     getActionMenuAnchor:()=>phase===PHASE.PLAYER&&selected&&!commandPanelCollapsed&&mode!=="support-select"
       ?{x:selected.x,y:selected.y}:null,

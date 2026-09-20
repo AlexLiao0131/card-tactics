@@ -87,6 +87,57 @@
     else{img.removeAttribute("src");img.style.display="none";fallback.style.display="grid";fallback.textContent=(data.name||"?").slice(0,1);}
   }
 
+  const skillBar=document.getElementById("skillBar");
+
+  function engagementUnit(data,side){
+    const card=document.createElement("div");
+    card.className=`engagement-unit engagement-${side}`;
+    card.innerHTML=
+      `<div class="engagement-figure"><span>${data.shortName}</span></div>`+
+      `<strong>${data.name}</strong>`+
+      `<div class="engagement-hp"><i style="width:${data.hpPct}%"></i></div>`+
+      `<small>HP ${data.hp} / ${data.maxHp}</small>`+
+      (data.oddsLabel?`<small><b>${data.oddsLabel}</b></small>`:"");
+    return card;
+  }
+
+  function engagementButton(action){
+    const button=document.createElement("button");
+    button.type="button";
+    button.className="action-button";
+    button.textContent=action.label;
+    button.disabled=!!action.disabled;
+    button.onclick=()=>window.CardTacticsRuntime?.handleEngagementUIAction?.(action.id,action.payload||{});
+    return button;
+  }
+
+  function renderEngagement(){
+    if(!skillBar)return;
+    const data=window.CardTacticsRuntime?.getEngagementPresentation?.();
+    if(!data)return;
+    skillBar.classList.add("engagement-overlay");
+    const stage=document.createElement("div");
+    stage.className="engagement-stage";
+    stage.appendChild(engagementUnit(data.player,"player"));
+    const center=document.createElement("div");
+    center.className="engagement-versus";
+    center.innerHTML=`<b>VS</b><span>${data.skillName}</span>`;
+    stage.appendChild(center);
+    stage.appendChild(engagementUnit(data.enemy,"enemy"));
+    skillBar.appendChild(stage);
+
+    for(const group of data.groups||[]){
+      const row=document.createElement("div");
+      row.className="support-choice";
+      const title=document.createElement("div");
+      title.textContent=group.title;
+      row.appendChild(title);
+      (group.actions||[]).forEach(action=>row.appendChild(engagementButton(action)));
+      skillBar.appendChild(row);
+    }
+    (data.actions||[]).forEach(action=>skillBar.appendChild(engagementButton(action)));
+  }
+
   function render(){
     renderUnitHud();
     const phase=window.CardTacticsRuntime?.getPhase?.();
@@ -108,6 +159,7 @@
   close.onclick=()=>setOpen(false);
   unitHud.querySelector(".tactical-unit-close").onclick=()=>{unitHudManuallyHidden=true;unitHud.classList.remove("visible");};
 
+  window.TacticalUIController=Object.freeze({renderEngagement});
   window.addEventListener("cardtactics:inspection",()=>{unitHudManuallyHidden=false;renderUnitHud();});
   window.addEventListener("cardtactics:log",render);
   window.addEventListener("cardtactics:state",render);
