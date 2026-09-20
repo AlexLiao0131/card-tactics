@@ -9,7 +9,7 @@
   let pendingEngagement=null;
   let supportSelection=new Map();
   let pendingCopySkill=null;
-  let battleContext=null,enemyController=null,cardPhaseController=null,presentationController=null,objectiveController=null,environmentController=null,coreCaptureController=null,deathLifecycle=null;
+  let battleContext=null,enemyController=null,cardPhaseController=null,presentationController=null,objectiveController=null,environmentController=null,coreCaptureController=null,deathLifecycle=null,encounterRewards=null;
   let renderRevision=0;
 
   // Engagement Step 4: enemy SINGLE attacks pause here until the player chooses a reaction.
@@ -849,9 +849,12 @@
     setMatchResult:value=>{matchResult=value;phase=PHASE.ENDED;},
     onMatchEnd:value=>{clearSelection();clearEnemyReaction();pushLog(`Round ${round}｜${value}｜關卡目標已${value==="VICTORY"?"達成":"失敗"}。`,"SYSTEM");}
   });
+  if(!window.EncounterRewardEngine?.create)throw new Error("EncounterRewardEngine is not loaded.");
+  encounterRewards=window.EncounterRewardEngine.create({playerCardState:()=>cardState,pushLog});
   if(!window.DeathLifecycleEngine?.create)throw new Error("DeathLifecycleEngine is not loaded.");
   deathLifecycle=window.DeathLifecycleEngine.create({
     stageEvent,cardStateFor:unit=>unit.team===TEAM.PLAYER?cardState:enemyCardState,pushLog,
+    onDefeated:unit=>{if(unit.team===TEAM.ENEMY)encounterRewards.onDefeated(unit);},
     onFinalized:()=>objectiveController?.checkMatchEnd?.()
   });
   if(!window.BattleCoreCaptureController?.create)throw new Error("BattleCoreCaptureController is not loaded.");

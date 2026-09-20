@@ -28,4 +28,14 @@ window.CARDS={
   elf_guard_card:{id:"elf_guard_card",name:"精靈衛士",type:"CHARACTER",characterId:"elf_guard",faction:"ELF_EMPIRE",unitType:"UNIT",cost:4},
   elf_priest_card:{id:"elf_priest_card",name:"精靈祭司",type:"CHARACTER",characterId:"elf_priest",faction:"ELF_EMPIRE",unitType:"UNIT",cost:4}
 };
-window.CardDatabase=(()=>({get(id){return CARDS[id]||null;},list(ids){return(ids||[]).map(id=>CARDS[id]).filter(Boolean);},isCharacter(card){return card?.type==="CHARACTER";},isSpell(card){return card?.type==="SPELL";}}))();
+window.CardDatabase=(()=>{
+  const AVAILABILITY=Object.freeze({COLLECTION:"COLLECTION",BATTLE_ONLY:"BATTLE_ONLY"});
+  function get(id){return CARDS[id]||null;}
+  function list(ids){return(ids||[]).map(id=>CARDS[id]).filter(Boolean);}
+  function availability(card){return card?.availability||AVAILABILITY.COLLECTION;}
+  function isBattleOnly(card){return availability(card)===AVAILABILITY.BATTLE_ONLY;}
+  function canPersist(card){return !!card&&!isBattleOnly(card);}
+  function isCharacter(card){return card?.type==="CHARACTER";}
+  function isSpell(card){return card?.type==="SPELL";}
+  return Object.freeze({AVAILABILITY,get,list,availability,isBattleOnly,canPersist,isCharacter,isSpell});
+})();
