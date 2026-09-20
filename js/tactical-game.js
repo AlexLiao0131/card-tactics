@@ -74,7 +74,7 @@
     const requestedStageId=window.CardTacticsBattleSetup?.stageId||"prototype_battle";
     stage=StageDatabase.get(requestedStageId);
     if(!stage) throw new Error(`Unknown stage: ${requestedStageId}`);
-    stageState=StageEngine.create(stage.scriptId);
+    stageState=StageEngine.create(stage.scriptId,{victory:stage.victory,defeat:stage.defeat});
     map=createMap();
     cores=(stage.cores||[]).map(core=>({...core,hp:Number(core.hp??core.maxHp??0),maxHp:Number(core.maxHp??core.hp??0)}));
     environmentState=window.EnvironmentEngine?EnvironmentEngine.create(stage.environment||{}):null;
@@ -209,7 +209,11 @@
       units,
       log:text=>pushLog(text),
       spawn:spawnFromScript,
-      setObjective:action=>pushLog(`勝敗條件變更：${action.objective||action.type}`)
+      onObjectiveChanged:(active,action)=>{
+        const target=String(action.target||"").toUpperCase();
+        const label=action.objectives?"勝敗條件":target==="VICTORY"?"勝利條件":target==="DEFEAT"?"失敗條件":"勝敗條件";
+        pushLog(`${label}已更新。`,"SYSTEM");
+      }
     });
   }
 

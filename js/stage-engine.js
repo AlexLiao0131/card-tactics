@@ -15,11 +15,39 @@ window.STAGE_SCRIPTS={
 };
 
 window.StageEngine=(()=>{
-  function create(scriptId){
-    return {scriptId,fired:new Set(),flags:{}};
+  const clone=value=>value==null?value:JSON.parse(JSON.stringify(value));
+  function create(scriptId,initialObjectives=null){
+    return {
+      scriptId,
+      fired:new Set(),
+      flags:{},
+      objectives:{
+        victory:clone(initialObjectives?.victory??null),
+        defeat:clone(initialObjectives?.defeat??null)
+      }
+    };
   }
   function scriptFor(state){
     return STAGE_SCRIPTS[state?.scriptId]||null;
+  }
+  function objectives(state,fallback=null){
+    return {
+      victory:state?.objectives?.victory??fallback?.victory??null,
+      defeat:state?.objectives?.defeat??fallback?.defeat??null
+    };
+  }
+  function setObjective(state,action){
+    if(!state||!action)return null;
+    if(action.objectives){
+      if(Object.prototype.hasOwnProperty.call(action.objectives,"victory"))state.objectives.victory=clone(action.objectives.victory);
+      if(Object.prototype.hasOwnProperty.call(action.objectives,"defeat"))state.objectives.defeat=clone(action.objectives.defeat);
+      return objectives(state);
+    }
+    const target=String(action.target||"").toUpperCase();
+    if(target!=="VICTORY"&&target!=="DEFEAT")return null;
+    if(!Object.prototype.hasOwnProperty.call(action,"objective"))return null;
+    state.objectives[target.toLowerCase()]=clone(action.objective);
+    return objectives(state);
   }
   function pendingActions(state,predicate){
     const script=scriptFor(state);
@@ -69,7 +97,8 @@ window.StageEngine=(()=>{
         }else if(action.type==="SET_FLAG"){
           state.flags[action.key]=action.value;
         }else if(action.type==="SET_OBJECTIVE"){
-          context.setObjective?.(action);
+          const active=setObjective(state,action);
+          if(active)context.onObjectiveChanged?.(active,action);
         }
       }
       if(item.once)state.fired.add(item.id);
@@ -77,5 +106,5 @@ window.StageEngine=(()=>{
     }
     return executed;
   }
-  return Object.freeze({create,run,pendingActions,hasPendingSpawn});
+  return Object.freeze({create,run,objectives,setObjective,pendingActions,hasPendingSpawn});
 })();
