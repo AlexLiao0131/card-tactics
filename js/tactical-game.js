@@ -9,7 +9,7 @@
   let pendingEngagement=null;
   let supportSelection=new Map();
   let pendingCopySkill=null;
-  let battleContext=null,enemyController=null,cardPhaseController=null,presentationController=null,objectiveController=null;
+  let battleContext=null,enemyController=null,cardPhaseController=null,presentationController=null,objectiveController=null,environmentController=null;
   let renderRevision=0;
 
   // Engagement Step 4: enemy SINGLE attacks pause here until the player chooses a reaction.
@@ -27,22 +27,12 @@
   }
 
   function logPostEffect(entry){
-    const {source,target,effect,result}=entry;
-    if(!result)return;
-    if(!result.applied){
-      pushLog(`${target.character.name}｜${effect.type} 未生效${result.reason?`（${result.reason}）`:""}。`,"DETAIL");
-      return;
-    }
-    const moved=result.steps?.length||0;
-    const visitCollisions=(r,mover=target)=>{for(const collision of r?.collisions||[]){resolveCollisionRuntime(collision,{mover,source});if(collision.chain&&collision.surface?.unit)visitCollisions(collision.chain,collision.surface.unit);}};
-    visitCollisions(result);
-    pushLog(`${source.character.name} → ${target.character.name}：${effect.type==="PULL"?"拉近":"擊退"} ${moved} 格。`,"BATTLE");
-    if(result.falls?.length){
-      const drops=result.falls.map(f=>`Z${f.from}→H${f.to}`).join("、");
-      pushLog(`${target.character.name} 墜落 ${drops}｜墜落傷害 ${result.fallDamage}｜HP ${target.hp}。`,"BATTLE");
-    }else{
-      pushLog(`${target.character.name} 強制位移完成｜無墜落傷害。`,"DETAIL");
-    }
+    const {source,target,effect,result}=entry;if(!result)return;
+    if(!result.applied){pushLog(`${target.character.name}｜${effect.type} 未生效${result.reason?`（${result.reason}）`:""}。`,"DETAIL");return;}
+    const moved=result.steps?.length||0,visitCollisions=(r,mover=target)=>{for(const collision of r?.collisions||[]){environmentController.resolveCollisionRuntime(collision,{mover,source});if(collision.chain&&collision.surface?.unit)visitCollisions(collision.chain,collision.surface.unit);}};
+    visitCollisions(result);pushLog(`${source.character.name} → ${target.character.name}：${effect.type==="PULL"?"拉近":"擊退"} ${moved} 格。`,"BATTLE");
+    if(result.falls?.length){const drops=result.falls.map(f=>`Z${f.from}→H${f.to}`).join("、");pushLog(`${target.character.name} 墜落 ${drops}｜墜落傷害 ${result.fallDamage}｜HP ${target.hp}。`,"BATTLE");}
+    else pushLog(`${target.character.name} 強制位移完成｜無墜落傷害。`,"DETAIL");
     if(result.applied&&target.alive)enterTile(target);
   }
 
@@ -57,55 +47,11 @@
 
 
 
-  function resolveCollisionRuntime(collision,{mover,source}={}){
-    if(!collision)return;
-    const surface=collision.surface||{},moverName=mover?.character?.name||"單位";
-    if(surface.kind==="SHIELD"){
-      pushLog(`${moverName} 撞上 ${surface.unit?.character?.name||"防禦者"} 的防禦面｜撞擊傷害 ${collision.damage||0}｜HP ${mover?.hp??"-"}。`,"BATTLE");
-    }else if(surface.kind==="UNIT"){
-      pushLog(`${moverName} 撞上 ${surface.unit?.character?.name||"單位"}｜撞擊傷害 ${collision.damage||0}${collision.transferred?"｜力量傳遞，觸發連鎖擊飛":"｜位移被阻擋"}。`,"BATTLE");
-    }else if(surface.kind==="OBJECT"){
-      const object=surface.object;
-      pushLog(`${moverName} 撞上 ${object?.name||object?.id||"物件"}｜撞擊傷害 ${collision.damage||0}${collision.objectDamage?`｜物件耐久 -${collision.objectDamage}`:""}${collision.objectDestroyed?"｜物件破壞":""}。`,"BATTLE");
-      if(collision.objectDestroyed&&environmentState){
-        environmentState.destroyedObjects?.add?.(object.id);
-        const tile=TacticalEngine.tile(map,object.x,object.y);
-        if(tile&&object.breaksIntoTerrain)tile.terrain=object.breaksIntoTerrain;
-      }
-    }else pushLog(`${moverName} 撞上地形／邊界｜撞擊傷害 ${collision.damage||0}｜HP ${mover?.hp??"-"}。`,"BATTLE");
-    if(mover&&!mover.alive)handleDefeated(mover,source,{type:"COLLISION",surface:surface.kind});
-  }
+  function resolveCollisionRuntime(...args){return environmentController.resolveCollisionRuntime(...args);}
 
-  function applyForcedMovement(source,target,distance,{name="強制位移",lift=0,damage=0,damageType="PHYSICAL",resistAxes=null}={}){
-    if(damage>0&&target?.alive)damageUnitFlat(target,damage,name);
-    if(!target?.alive)return {applied:false,defeated:true,steps:[],falls:[],fallDamage:0};
-    const result=PostEngagementEngine.forcedMove({map,units,source,target,effect:{type:"KNOCKBACK",distance,lift,force:{horizontal:distance,vertical:lift},...(resistAxes?{resistAxes}:{})},onCollision:resolveCollisionRuntime});
-    if(result.applied){
-      if(result.airborne){
-        const d=result.displacement;
-        pushLog(`${target.character.name} 被${name}捲起至 Z${result.travelZ}，位移 ${result.steps.length} 格${d?`｜重量 ${d.weightClass}｜力 ${d.baseLift}→有效升空 ${d.lift}`:""}。`,"BATTLE");
-      }
-      else pushLog(`${target.character.name} 被${name}推離 ${result.steps.length} 格。`,"BATTLE");
-      if(result.landing)pushLog(`${target.character.name} 落地 Z${result.landing.fromZ}→H${result.landing.toZ}${result.fallDamage?`｜墜落傷害 ${result.fallDamage}｜HP ${target.hp}`:"｜無墜落傷害"}。`,result.fallDamage?"BATTLE":"DETAIL");
-      if(target.alive)enterTile(target);
-    }
-    if(result.defeated)handleDefeated(target,source,{type:"ENVIRONMENT_FORCE",name,damageType});
-    return result;
-  }
+  function applyForcedMovement(...args){return environmentController.applyForcedMovement(...args);}
 
-  function traverseUnitPath(unit,path,{kind="UNIT"}={}){
-    for(const tile of path||[]){
-      unit.x=tile.x;unit.y=tile.y;unit.z=Number(tile.elevation||0);enterTile(unit);
-      if(!unit.alive)return {completed:false,reason:"DEFEATED"};
-      const interaction=EnvironmentEngine.pathInteraction({state:environmentState,x:tile.x,y:tile.y,kind});
-      const forced=interaction.effects?.find(e=>e.type==="FORCED_MOVE");
-      if(forced){
-        applyForcedMovement({x:tile.x,y:tile.y},unit,forced.distance,{name:forced.effect?.type==="FIRE_TORNADO"?"火龍捲":"龍捲風",lift:Number(forced.lift||forced.effect?.lift||0),damage:Number(forced.damage||forced.effect?.damage||0),damageType:forced.effect?.damageType||"PHYSICAL",resistAxes:forced.resistAxes||forced.effect?.resistAxes});
-        return {completed:false,reason:"ENVIRONMENT_FORCE"};
-      }
-    }
-    return {completed:true};
-  }
+  function traverseUnitPath(...args){return environmentController.traverseUnitPath(...args);}
 
   function damageUnitFlat(unit,damage,sourceName){
     if(!unit?.alive)return;
@@ -276,40 +222,11 @@
     }
     return entities;
   }
-  function applyEnvironmentHazardToUnit(unit,{reason="環境"}={}){
-    if(!environmentState||!unit?.alive)return 0;
-    const burning=EnvironmentEngine.effectAt(environmentState,unit.x,unit.y).find(effect=>effect.type===EnvironmentEngine.EFFECT.BURNING);
-    if(!burning)return 0;
-    const damage=Math.max(0,Number(burning.damage||EnvironmentEngine.HAZARD?.BURNING_DAMAGE||0));
-    if(damage<=0)return 0;
-    unit.hp=Math.max(0,unit.hp-damage);
-    pushLog(`${unit.character.name} ${reason}｜燃燒傷害 ${damage}｜HP ${unit.hp}。`,"BATTLE");
-    if(unit.hp<=0&&unit.alive){
-      unit.alive=false;
-      pushLog(`${unit.character.name} 被環境火焰擊倒。`,"BATTLE");
-      handleDefeated(unit,null,{type:"BURNING",source:"ENVIRONMENT"});
-    }
-    return damage;
-  }
+  function applyEnvironmentHazardToUnit(...args){return environmentController.applyEnvironmentHazardToUnit(...args);}
 
-  function applyEnvironmentHazards({reason="持續燃燒"}={}){
-    if(!environmentState)return;
-    [...living(TEAM.PLAYER),...living(TEAM.ENEMY)].forEach(unit=>applyEnvironmentHazardToUnit(unit,{reason}));
-  }
+  function applyEnvironmentHazards(...args){return environmentController.applyEnvironmentHazards(...args);}
 
-  function enterTile(unit){
-    if(!unit?.alive)return;
-    stageEvent({
-      type:"ENTER_TILE",
-      unitId:unit.id,
-      characterId:unit.character.id,
-      x:unit.x,
-      y:unit.y,
-      z:Number(unit.z??(TacticalEngine.elevation(TacticalEngine.tile(map,unit.x,unit.y))||0)),
-      team:unit.team===TEAM.PLAYER?"PLAYER":"ENEMY"
-    });
-    applyEnvironmentHazardToUnit(unit,{reason:"踏入燃燒區"});
-  }
+  function enterTile(...args){return environmentController.enterTile(...args);}
 
   function stageEvent(event){
     if(!stageState)return;
@@ -392,17 +309,7 @@
 
 
 
-  function resolveWeatherEvents(){
-    if(!environmentState)return;
-    for(const event of EnvironmentEngine.rollWeatherEvent({map,state:environmentState,units})){
-      if(event.type!=="LIGHTNING_STRIKE")continue;
-      const unit=event.unit;if(!unit?.alive)continue;
-      const names=(event.riskReasons||[]).map(r=>r==="METAL"?"金屬裝備":r==="WATER"?"水域":"樹木／森林");
-      unit.hp=Math.max(0,unit.hp-Number(event.damage||0));
-      pushLog(`⚡ 落雷擊中 ${unit.character.name}｜${event.damage} 傷害｜HP ${unit.hp}${names.length?`｜高風險：${names.join("＋")}`:""}。`,"BATTLE");
-      if(unit.hp<=0&&unit.alive){unit.alive=false;handleDefeated(unit,null,{type:"LIGHTNING"});}
-    }
-  }
+  function resolveWeatherEvents(...args){return environmentController.resolveWeatherEvents(...args);}
 
   function beginPlayerTurn(){
     round++;
@@ -645,20 +552,7 @@
     const r=Number(radius||0);
     return map.tiles.filter(tile=>Math.abs(tile.x-center.x)+Math.abs(tile.y-center.y)<=r);
   }
-  function logEnvironmentEvent(event){
-    if(event.type==="IGNITE")pushLog(`(${event.x},${event.y}) 燃燒起來，成為火光來源。`,"SYSTEM");
-    else if(event.type==="FIRE_EXTINGUISHED")pushLog(`(${event.x},${event.y}) 的火焰被水熄滅。`,"SYSTEM");
-    else if(event.type==="RAIN_EXTINGUISHED_FIRE")pushLog(`豪雨熄滅 (${event.x},${event.y}) 的普通火焰。`,"SYSTEM");
-    else if(event.type==="RAIN_SUPPRESSED_FIRE")pushLog(`豪雨壓制 (${event.x},${event.y}) 的小火，無法形成燃燒地形。`,"SYSTEM");
-    else if(event.type==="MUD_CREATED")pushLog(`豪雨使 (${event.x},${event.y}) 的平地化為泥濘。`,"DETAIL");
-    else if(event.type==="MUD_DRY")pushLog(`(${event.x},${event.y}) 的泥濘乾燥，恢復為平地。`,"DETAIL");
-    else if(event.type==="WATER_EVAPORATED")pushLog(`高熱蒸乾 (${event.x},${event.y}) 的水域，地形轉為陸地。`,"SYSTEM");
-    else if(event.type==="STEAM_CREATED")pushLog(`高熱與水分作用，(${event.x},${event.y}) 產生蒸氣迷霧。`,"SYSTEM");
-    else if(event.type==="STONE_FRAGMENT")pushLog(`爆炸擊中石質物件，(${event.x},${event.y}) 產生破片${event.destroyed?"並炸開道路":""}。`,"SYSTEM");
-    else if(event.type==="TORNADO_CREATED")pushLog(`(${event.x},${event.y}) 形成龍捲風場。`,"DETAIL");
-    else if(event.type==="FIRE_TORNADO_CREATED")pushLog(`(${event.x},${event.y}) 的燃燒區被風捲起，形成火龍捲。`,"SYSTEM");
-    else if(event.type==="ELECTRIC_CONDUCTION")pushLog(`⚡ (${event.x},${event.y}) 發生雷元素傳導。`,"SYSTEM");
-  }
+  function logEnvironmentEvent(...args){return environmentController.logEnvironmentEvent(...args);}
 
   function clickBattleTile(x,y){
     const tile=TacticalEngine.tile(map,Number(x),Number(y));
@@ -1090,6 +984,10 @@
     setMatchResult:value=>{matchResult=value;phase=PHASE.ENDED;},
     onMatchEnd:value=>{clearSelection();clearEnemyReaction();pushLog(`Round ${round}｜${value}｜關卡目標已${value==="VICTORY"?"達成":"失敗"}。`,"SYSTEM");}
   });
+  if(!window.BattleEnvironmentController?.create)throw new Error("BattleEnvironmentController is not loaded.");
+  environmentController=window.BattleEnvironmentController.create({
+    TEAM,state:()=>({map,units,environmentState}),living,pushLog,handleDefeated,stageEvent,damageUnitFlat
+  });
   if(!window.TacticalEnemyController?.create)throw new Error("TacticalEnemyController is not loaded.");
   enemyController=window.TacticalEnemyController.create(battleContext);
   if(!window.CardPhaseController?.create)throw new Error("CardPhaseController is not loaded.");
@@ -1103,7 +1001,7 @@
     unitAt,createUnit:(id,team,characterId,x,y)=>createUnit(id,team,characterId,x,y),
     nextUnitId:()=>`pc${unitSerial++}`,
     aoeTiles,applyForcedMovement,damageUnitFlat,applyEnvironmentHazardToUnit,
-    logEnvironmentEvent,checkMatchEnd,handleDefeated
+    logEnvironmentEvent,checkMatchEnd:()=>objectiveController.checkMatchEnd(),handleDefeated
   });
 
   window.CardTacticsRuntime={
