@@ -360,40 +360,30 @@
     mode="idle";
   }
 
-  function hasDeployableCharacterCard(state){
-    if(!state)return false;
-    return [...state.zones.hand,...state.zones.deck].some(cardId=>CardDatabase.isCharacter(CardDatabase.get(cardId)));
+  function hasPendingReinforcement(team){
+    const script=window.STAGE_SCRIPTS?.[stageState?.scriptId];
+    if(!script)return false;
+    return (script.events||[]).some(item=>{
+      if(item.once&&stageState.fired?.has(item.id))return false;
+      return (item.actions||[]).some(action=>action.type==="SPAWN"&&action.team===team);
+    });
   }
 
-  function sideCanStillField(team){
-    if(living(team).length>0)return true;
-    return hasDeployableCharacterCard(team===TEAM.PLAYER?cardState:enemyCardState);
+  function objectiveContext(){
+    const areas={};
+    for(const point of DeploymentEngine.points(stage))areas[point.id]=point.area||point.captureTiles||[];
+    for(const [id,area] of Object.entries(stage.objectiveAreas||{}))areas[id]=area;
+    return {round,units,cores,cardState,enemyCardState,areas,deploymentPoints:DeploymentEngine.points(stage),
+      isCharacterCard:id=>CardDatabase.isCharacter(CardDatabase.get(id)),hasPendingReinforcement};
   }
 
   function checkMatchEnd(){
-    if(stage?.ruleset==="CORE_CAPTURE"){
-      const playerCore=coreForOwner("PLAYER"),enemyCore=coreForOwner("ENEMY");
-      if(enemyCore&&enemyCore.hp<=0){phase=PHASE.ENDED;matchResult="VICTORY";clearSelection();clearEnemyReaction();pushLog(`Round ${round}｜VICTORY！敵方 Core 已被摧毀。`,"SYSTEM");return true;}
-      if(playerCore&&playerCore.hp<=0){phase=PHASE.ENDED;matchResult="DEFEAT";clearSelection();clearEnemyReaction();pushLog(`Round ${round}｜DEFEAT！我方 Core 已被摧毀。`,"SYSTEM");return true;}
-      return false;
-    }
-    if(!sideCanStillField(TEAM.ENEMY)){
-      phase=PHASE.ENDED;
-      matchResult="VICTORY";
-      clearSelection();
-      clearEnemyReaction();
-      pushLog(`Round ${round}｜VICTORY！敵方已無存活單位或可部署角色卡。`);
-      return true;
-    }
-    if(!sideCanStillField(TEAM.PLAYER)){
-      phase=PHASE.ENDED;
-      matchResult="DEFEAT";
-      clearSelection();
-      clearEnemyReaction();
-      pushLog(`Round ${round}｜DEFEAT！我方已無存活單位或可部署角色卡。`);
-      return true;
-    }
-    return false;
+    if(matchResult)return true;
+    const result=ObjectiveEngine.evaluateMatch(stage,objectiveContext());
+    if(!result.ended)return false;
+    phase=PHASE.ENDED;matchResult=result.result;clearSelection();clearEnemyReaction();
+    pushLog(`Round ${round}｜${matchResult}｜關卡目標已${matchResult==="VICTORY"?"達成":"失敗"}。`,"SYSTEM");
+    return true;
   }
 
   function resolveWeatherEvents(){
