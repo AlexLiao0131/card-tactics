@@ -7,6 +7,6 @@ function corners(p,o){if(o.projection==="TOP"){const h=38;return[{x:p.x-h,y:p.y-
 function projectedEdge(worldEdge,rotation=0){return (worldEdge-((rotation%4)+4)%4+4)%4}
 function rowDepth(x,y,m,o){return 1000+point(x,y,0,m,o).y*10}
 function topDepth(tile,m,o){return rowDepth(tile.x,tile.y,m,o)+6}
-function faceDepth(face,m,o){const e=projectedEdge(face.edge,o.rotation);return rowDepth(face.x,face.y,m,o)+(e===1||e===2?4:1)}
+function faceDepth(face,m,o){const e=projectedEdge(face.edge,o.rotation),dirs=[[1,0],[0,1],[-1,0],[0,-1]],d=dirs[face.edge]||[0,0],neighbor=rowDepth(face.x+d[0],face.y+d[1],m,o),owner=rowDepth(face.x,face.y,m,o);return Math.max(owner,neighbor)+4}
 window.IsometricProjection={rotated,grid,point,corners,projectedEdge,rowDepth,topDepth,faceDepth};
 })();
