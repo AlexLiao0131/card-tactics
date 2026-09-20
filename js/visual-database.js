@@ -9,9 +9,7 @@ window.VISUALS={
   },
   skills:{},
   equipment:{},
-  maps:{
-    prototype_field:{background:null}
-  },
+  maps:{prototype_field:{background:null}},
   effects:{},
   presentation:{
     terrain:{
@@ -30,6 +28,10 @@ window.VISUALS={
     effects:{
       BURNING:{primitive:"TEXT",text:"🔥",fontSize:18},
       STEAM:{primitive:"TEXT",text:"♨",fontSize:17},
+      TORNADO:{primitive:"TEXT",text:"🌪️",fontSize:27},
+      FIRE_TORNADO:{primitive:"TEXT",text:"🌪️🔥",fontSize:24},
+      ELECTRIFIED:{primitive:"TEXT",text:"⚡",fontSize:20},
+      FRAGMENTS:{primitive:"TEXT",text:"◆",fontSize:16,color:"#d6d0c5"},
       TRAP:{primitive:"TEXT",text:"🪤",fontSize:20}
     }
   }
