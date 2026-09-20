@@ -34,6 +34,8 @@
       return;
     }
     const moved=result.steps?.length||0;
+    const visitCollisions=(r,mover=target)=>{for(const collision of r?.collisions||[]){resolveCollisionRuntime(collision,{mover,source});if(collision.chain&&collision.surface?.unit)visitCollisions(collision.chain,collision.surface.unit);}};
+    visitCollisions(result);
     pushLog(`${source.character.name} → ${target.character.name}：${effect.type==="PULL"?"拉近":"擊退"} ${moved} 格。`,"BATTLE");
     if(result.falls?.length){
       const drops=result.falls.map(f=>`Z${f.from}→H${f.to}`).join("、");
@@ -55,10 +57,29 @@
 
 
 
+  function resolveCollisionRuntime(collision,{mover,source}={}){
+    if(!collision)return;
+    const surface=collision.surface||{},moverName=mover?.character?.name||"單位";
+    if(surface.kind==="SHIELD"){
+      pushLog(`${moverName} 撞上 ${surface.unit?.character?.name||"防禦者"} 的防禦面｜撞擊傷害 ${collision.damage||0}｜HP ${mover?.hp??"-"}。`,"BATTLE");
+    }else if(surface.kind==="UNIT"){
+      pushLog(`${moverName} 撞上 ${surface.unit?.character?.name||"單位"}｜撞擊傷害 ${collision.damage||0}${collision.transferred?"｜力量傳遞，觸發連鎖擊飛":"｜位移被阻擋"}。`,"BATTLE");
+    }else if(surface.kind==="OBJECT"){
+      const object=surface.object;
+      pushLog(`${moverName} 撞上 ${object?.name||object?.id||"物件"}｜撞擊傷害 ${collision.damage||0}${collision.objectDamage?`｜物件耐久 -${collision.objectDamage}`:""}${collision.objectDestroyed?"｜物件破壞":""}。`,"BATTLE");
+      if(collision.objectDestroyed&&environmentState){
+        environmentState.destroyedObjects?.add?.(object.id);
+        const tile=TacticalEngine.tile(map,object.x,object.y);
+        if(tile&&object.breaksIntoTerrain)tile.terrain=object.breaksIntoTerrain;
+      }
+    }else pushLog(`${moverName} 撞上地形／邊界｜撞擊傷害 ${collision.damage||0}｜HP ${mover?.hp??"-"}。`,"BATTLE");
+    if(mover&&!mover.alive)handleDefeated(mover,source,{type:"COLLISION",surface:surface.kind});
+  }
+
   function applyForcedMovement(source,target,distance,{name="強制位移",lift=0,damage=0,damageType="PHYSICAL",resistAxes=null}={}){
     if(damage>0&&target?.alive)damageUnitFlat(target,damage,name);
     if(!target?.alive)return {applied:false,defeated:true,steps:[],falls:[],fallDamage:0};
-    const result=PostEngagementEngine.forcedMove({map,units,source,target,effect:{type:"KNOCKBACK",distance,lift,force:{horizontal:distance,vertical:lift},...(resistAxes?{resistAxes}:{})}});
+    const result=PostEngagementEngine.forcedMove({map,units,source,target,effect:{type:"KNOCKBACK",distance,lift,force:{horizontal:distance,vertical:lift},...(resistAxes?{resistAxes}:{})},onCollision:resolveCollisionRuntime});
     if(result.applied){
       if(result.airborne){
         const d=result.displacement;

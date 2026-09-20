@@ -8,16 +8,14 @@
     church_templar_plate:{id:"church_templar_plate",name:"聖殿騎士重甲",kind:"ARMOR",type:"HEAVY",types:["HEAVY"],element:"HOLY",affixes:[]},
     church_bishop_robe:{id:"church_bishop_robe",name:"主教法衣",kind:"ARMOR",type:"LIGHT",types:["LIGHT"],element:"HOLY",affixes:[]}
   });
-  Object.assign(PASSIVES,{
-    CHURCH_GUARDIAN:{id:"CHURCH_GUARDIAN",name:"聖殿援護",category:"PASSIVE",defenseProfiles:[{id:"church_guard_ally",method:"GUARD",name:"聖殿援護",canGuardAlly:true,vs:{SLASH:{damageMultiplier:.55},PIERCE:{damageMultiplier:.60},SHOT:{damageMultiplier:.55},STRIKE:{damageMultiplier:.70},MAGIC:{damageMultiplier:.80}}}]}
-  });
+  Object.assign(PASSIVES,{CHURCH_GUARDIAN:{id:"CHURCH_GUARDIAN",name:"聖殿援護",category:"PASSIVE",defenseProfiles:[{id:"church_guard_ally",method:"GUARD",name:"聖殿援護",canGuardAlly:true,vs:{SLASH:{damageMultiplier:.55},PIERCE:{damageMultiplier:.60},SHOT:{damageMultiplier:.55},STRIKE:{damageMultiplier:.70},MAGIC:{damageMultiplier:.80}}}]}});
   Object.assign(SKILLS,{
     church_slash:{id:"church_slash",name:"騎士斬擊",category:"ATTACK",weapon:"sword",power:1,range:{min:1,max:1},attackType:"INHERIT",element:"INHERIT",speed:0,target:"ENEMY",support:false,resource:{type:"UNLIMITED"}},
     church_heavy_slash:{id:"church_heavy_slash",name:"重劍斬擊",category:"ATTACK",weapon:"greatsword",power:1.1,range:{min:1,max:1},attackType:"SLASH",element:"INHERIT",speed:-5,target:"ENEMY",support:false,resource:{type:"UNLIMITED"}},
     church_holy_bolt:{id:"church_holy_bolt",name:"聖光術",category:"MAGIC",weapon:"staff",power:1,range:{min:1,max:4},attackType:"MAGIC",element:"HOLY",speed:0,target:"ENEMY",support:true,resource:{type:"UNLIMITED"}},
     templar_holy_slash:{id:"templar_holy_slash",name:"聖光斬",category:"ATTACK",weapon:"greatsword",power:1.2,range:{min:1,max:1},attackType:"SLASH",element:"HOLY",defenseStat:"MDEF",speed:0,target:"ENEMY",support:false,resource:{type:"UNLIMITED"}},
     templar_charge:{id:"templar_charge",name:"衝鋒",category:"ATTACK",weapon:"greatsword",power:1.15,range:{min:2,max:4},attackType:"SLASH",element:"INHERIT",speed:5,target:"ENEMY",support:false,resource:{type:"USES",max:3},approach:{type:"CHARGE",stopDistance:1}},
-    templar_holy_shield:{id:"templar_holy_shield",name:"聖盾",category:"MAGIC",power:0,range:{min:0,max:0},target:"SELF",support:false,resource:{type:"USES",max:2},effects:[{type:"BUFF",id:"HOLY_SHIELD",classification:"POSITIVE",duration:2,modifiers:{damageTakenMultiplier:.65,guardMultiplier:.75}}]},
+    templar_holy_shield:{id:"templar_holy_shield",name:"聖盾",category:"MAGIC",power:0,range:{min:0,max:0},target:"SELF",support:false,resource:{type:"USES",max:2},effects:[{type:"BUFF",id:"HOLY_SHIELD",classification:"POSITIVE",duration:2,modifiers:{damageTakenMultiplier:.65,guardMultiplier:.75},collision:{kind:"SHIELD",solid:true,height:3,hardness:4,response:"STOP",impactMultiplier:1.35,priority:100}}]},
     templar_healing:{id:"templar_healing",name:"治療術",category:"MAGIC",power:0,range:{min:1,max:3},target:"ALLY_OR_ENEMY",support:false,resource:{type:"USES",max:3},relationEffects:[{relation:"ALLY",type:"HEAL",amount:65},{relation:"SELF",type:"HEAL",amount:65},{relation:"ENEMY",type:"MAGIC_DAMAGE",power:.8,element:"HOLY",traitMultipliers:{UNDEAD:2}}]},
     saint_heal:{id:"saint_heal",name:"治癒祈禱",category:"MAGIC",power:0,range:{min:1,max:4},target:"ALLY",support:false,resource:{type:"USES",max:4},effects:[{type:"HEAL",amount:95}]},
     saint_dispel:{id:"saint_dispel",name:"淨化祈禱",category:"MAGIC",power:0,range:{min:1,max:4},target:"ALLY",support:false,resource:{type:"USES",max:3},effects:[{type:"DISPEL",classification:"NEGATIVE"}]},

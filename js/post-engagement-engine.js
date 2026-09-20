@@ -42,7 +42,9 @@ window.CollisionEngine=(()=>{
   };
   const objectProfile=object=>{
     if(!object||object.destroyed||object.blocksMovement!==true)return null;
-    return {kind:"OBJECT",id:object.id,solid:true,height:Number(object.collisionHeight??99),hardness:Number(object.hardness??(object.destructible?2:4)),response:object.collisionResponse||(object.destructible?"BREAK":"STOP"),impactMultiplier:Number(object.impactMultiplier||1),destructible:!!object.destructible,object};
+    const maxDurability=Math.max(1,Number(object.maxDurability??object.durability??(object.destructible?40:999999)));
+    if(object.destructible&&object.durability==null)object.durability=maxDurability;
+    return {kind:"OBJECT",id:object.id,solid:true,height:Number(object.collisionHeight??99),hardness:Number(object.hardness??(object.destructible?2:4)),response:object.collisionResponse||(object.destructible?"BREAK":"STOP"),impactMultiplier:Number(object.impactMultiplier||1),destructible:!!object.destructible,maxDurability,object};
   };
   const activeCollision=unit=>(unit?.effects||[]).map(e=>e?.collision?{...e.collision,effectId:e.id}:null).filter(Boolean).sort((a,b)=>Number(b.priority||0)-Number(a.priority||0))[0]||null;
   function unitProfile(unit){
@@ -88,7 +90,7 @@ window.PostEngagementEngine=(()=>{
   function fallbackDirection(map,units,target,distance,{z,airborne}={}){
     return DIRS.map((d,index)=>{let x=target.x,y=target.y,space=0;for(let i=0;i<distance;i++){const nx=x+d[0],ny=y+d[1],to=TacticalEngine.tile(map,nx,ny);if(!to)break;const surface=CollisionEngine.surfaceAt({map,units,x:nx,y:ny,z:Number(z),excludeId:target.id});if(surface)break;if(!airborne&&TacticalEngine.elevationDelta(TacticalEngine.tile(map,x,y),to)>1)break;x=nx;y=ny;space++}return{d,index,space}}).sort((a,b)=>b.space-a.space||a.index-b.index)[0]?.d||[0,0];
   }
-  function forcedMove({map,units,source,target,effect,_depth=0,_visited=new Set()}){
+  function forcedMove({map,units,source,target,effect,_depth=0,_visited=new Set(),onCollision=null}){
     if(!target?.alive)return{type:effect.type,applied:false,reason:"TARGET_DEAD",collisions:[]};
     if(_depth>CollisionEngine.MAX_CHAIN_DEPTH||_visited.has(target.id))return{type:effect.type,applied:false,reason:"CHAIN_LIMIT",collisions:[]};
     const visited=new Set(_visited);visited.add(target.id);
@@ -108,10 +110,24 @@ window.PostEngagementEngine=(()=>{
         let chain=null;
         if(transfer){
           const transferred=Math.max(1,remaining-1);
-          chain=forcedMove({map,units,source:{x:target.x,y:target.y},target:hit,effect:{type:"KNOCKBACK",distance:transferred,lift:0,force:{horizontal:transferred,vertical:0},resistAxes:{horizontal:true,vertical:true}},_depth:_depth+1,_visited:visited});
+          chain=forcedMove({map,units,source:{x:target.x,y:target.y},target:hit,effect:{type:"KNOCKBACK",distance:transferred,lift:0,force:{horizontal:transferred,vertical:0},resistAxes:{horizontal:true,vertical:true}},_depth:_depth+1,_visited:visited,onCollision});
           if(hit?.alive)damageUnit(hit,Math.max(1,Math.round(damage*.5)));
         }
-        collisions.push({kind:surface.kind,x:nx,y:ny,surface,damage,transferred:transfer,chain,stopped:true});
+        let objectDamage=0,objectDestroyed=false;
+        if(surface.kind==="OBJECT"&&surface.destructible&&surface.object){
+          objectDamage=Math.max(1,damage);
+          surface.object.durability=Math.max(0,Number(surface.object.durability??surface.maxDurability)-objectDamage);
+          objectDestroyed=surface.object.durability<=0;
+          if(objectDestroyed)surface.object.destroyed=true;
+        }
+        const collision={kind:surface.kind,x:nx,y:ny,surface,damage,transferred:transfer,chain,objectDamage,objectDestroyed,stopped:!objectDestroyed};
+        collisions.push(collision);
+        onCollision?.(collision,{mover:target,source,effect,depth:_depth});
+        if(objectDestroyed&&target.alive){
+          target.x=nx;target.y=ny;target.z=travelZ;
+          steps.push({x:nx,y:ny,z:travelZ,elevation:TacticalEngine.elevation(to),brokeObject:surface.object.id});
+          continue;
+        }
         break;
       }
       const from=TacticalEngine.tile(map,target.x,target.y);
