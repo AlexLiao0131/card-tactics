@@ -9,7 +9,7 @@
   let pendingEngagement=null;
   let supportSelection=new Map();
   let pendingCopySkill=null;
-  let battleContext=null,enemyController=null,cardPhaseController=null;
+  let battleContext=null,enemyController=null,cardPhaseController=null,presentationController=null;
   let renderRevision=0;
 
   // Engagement Step 4: enemy SINGLE attacks pause here until the player chooses a reaction.
@@ -682,120 +682,6 @@
     else if(event.type==="FIRE_TORNADO_CREATED")pushLog(`(${event.x},${event.y}) 的燃燒區被風捲起，形成火龍捲。`,"SYSTEM");
     else if(event.type==="ELECTRIC_CONDUCTION")pushLog(`⚡ (${event.x},${event.y}) 發生雷元素傳導。`,"SYSTEM");
   }
-  const TILE_EFFECT_INFO={
-    TORNADO:{name:"龍捲風",interaction:"持續風場；地面單位進入時觸發共用強制位移與墜落判定。"},
-    BURNING:{name:"燃燒",interaction:"小火可被水／豪雨熄滅；風可使燃燒區形成火龍捲。"},
-    STEAM:{name:"蒸氣",interaction:"遮蔽視線；持續時間結束後消散。"},
-    FRAGMENTS:{name:"岩石破片",interaction:"爆炸擊中石質環境時產生的物理破片效果。"},
-    FIRE_TORNADO:{name:"火龍捲",interaction:"燃燒區受到風力作用形成；造成高額火焰環境傷害。"},
-    ELECTRIFIED:{name:"帶電",interaction:"雷元素在水域或雨天可發生傳導。"}
-  };
-  const TILE_ENVIRONMENT_NAME={NONE:"一般",GRASS:"草木",WATER:"水",STONE:"石質"};
-  const WEATHER_NAME={CLEAR:"晴朗",FOG:"迷霧",RAIN:"雨",HEAVY_RAIN:"豪大雨",THUNDERSTORM:"雷雨"};
-
-  function tileInteractions(tile,effects){
-    const environment=EnvironmentEngine.environmentAt(map,tile.x,tile.y);
-    const notes=[];
-    if(environment==="GRASS"){
-      if(EnvironmentEngine.isRain(environmentState))notes.push("草木受雨勢影響，小火無法形成持續燃燒。");
-      else notes.push("草木可被 FIRE／HEAVY_FIRE 點燃。");
-    }
-    if(environment==="WATER"){
-      notes.push("小火會被熄滅；HEAVY_FIRE 會產生蒸氣並蒸乾水域，地形轉為陸地。");
-      notes.push("水域可傳導雷元素。");
-    }
-    if(environment==="STONE")notes.push("EXPLOSION 可產生岩石破片；可破壞的石質物件可能被炸開。");
-    if(tile.terrain==="MUD")notes.push("泥濘提高一般移動成本；雨勢結束後恢復為平地。");
-    if(EnvironmentEngine.isRain(environmentState))notes.push("雨天環境具導電性。");
-    for(const effect of effects){
-      const note=TILE_EFFECT_INFO[effect.type]?.interaction;
-      if(note&&!notes.includes(note))notes.push(note);
-    }
-    return notes;
-  }
-
-  function tileAnnotation(tile){
-    if(!tile)return "";
-    const terrain=TERRAINS[tile.terrain]||{};
-    const environment=EnvironmentEngine.environmentAt(map,tile.x,tile.y);
-    const effects=environmentState?EnvironmentEngine.effectAt(environmentState,tile.x,tile.y):[];
-    const object=(map.objects||[]).find(o=>!o.destroyed&&o.x===tile.x&&o.y===tile.y);
-    const lines=[
-      `地圖格 (${tile.x},${tile.y})｜${terrain.name||tile.terrain}｜H${Number(tile.elevation||0)}`,
-      `移動成本：${terrain.passable===false?"不可通行":terrain.moveCost??"-"}｜迴避修正：${Number(terrain.evasion||0)>=0?"+":""}${Number(terrain.evasion||0)}${terrain.rangedAccuracy?`｜遠程命中 +${terrain.rangedAccuracy}`:""}`,
-      `環境材質：${TILE_ENVIRONMENT_NAME[environment]||environment}｜天候：${WEATHER_NAME[environmentState?.weather]||environmentState?.weather||"晴朗"}`
-    ];
-    if(object)lines.push(`地圖物件：${object.name||object.id}${object.destructible?"｜可破壞":""}`);
-    if(effects.length){
-      lines.push("目前效果："+effects.map(effect=>{
-        const info=TILE_EFFECT_INFO[effect.type];
-        const duration=effect.duration==null?"":`（剩 ${effect.duration} 回合）`;
-        const damage=effect.damage?`／傷害 ${effect.damage}`:"";
-        return `${info?.name||effect.type}${duration}${damage}`;
-      }).join("、"));
-    }else{
-      lines.push("目前效果：無");
-    }
-    const interactions=tileInteractions(tile,effects);
-    lines.push(`環境互動：${interactions.length?interactions.join(" "):"目前沒有特殊互動。"}`);
-    return lines.join("\n");
-  }
-
-  function battleSnapshot(){
-    const reachable=
-      selected&&phase===PHASE.PLAYER&&!selected.acted&&!selected.moved&&mode==="command"
-        ?TacticalEngine.reachable(map,units,selected)
-        :new Map();
-    const targets=
-      selected&&phase===PHASE.PLAYER&&!selected.acted&&mode==="attack"&&selectedSkill&&targetType(selectedSkill)==="SINGLE"
-        ?targetableEntities(selected,selectedSkill)
-        :[];
-    const mapTargets=
-      selected&&phase===PHASE.PLAYER&&!selected.acted&&mode==="map-target"&&selectedSkill
-        ?mapTargetTiles(selected,selectedSkill)
-        :[];
-    const points=DeploymentEngine.points(stage);
-    const tiles=map.tiles.map(tile=>{
-      const unit=unitAt(tile.x,tile.y),core=coreAt(tile.x,tile.y);
-      const capturePoint=points.find(point=>(point.captureTiles||[]).some(t=>t.x===tile.x&&t.y===tile.y))||null;
-      const effects=environmentState?EnvironmentEngine.effectAt(environmentState,tile.x,tile.y):[];
-      const deployable=!!(pendingCard&&phase===PHASE.CARD&&CardDatabase.isCharacter(pendingCard)&&
-        DeploymentEngine.canDeploy({stage,map,units,owner:"PLAYER",x:tile.x,y:tile.y}));
-      const attackable=!!(
-        (pendingCard&&phase===PHASE.CARD&&CardDatabase.isSpell(pendingCard))||
-        (unit&&targets.includes(unit))||
-        (core&&targets.some(target=>target.kind==="CORE"&&target.core===core))||
-        mapTargets.includes(tile)
-      );
-      return {
-        x:tile.x,y:tile.y,terrain:tile.terrain,elevation:Number(tile.elevation||0),
-        reachable:reachable.has(tile.x+","+tile.y),attackable,deployable,
-        inspected:!!(inspectedTile&&inspectedTile.x===tile.x&&inspectedTile.y===tile.y),
-        effects:effects.map(effect=>effect.type),
-        deploymentAreaOwner:points.find(point=>(point.area||[]).some(t=>t.x===tile.x&&t.y===tile.y))?.owner||null,
-        capturePoint:capturePoint?{id:capturePoint.id,name:capturePoint.name,owner:capturePoint.owner}:null,
-        core:core?{id:core.id,owner:core.owner,name:core.name,hp:core.hp,maxHp:core.maxHp}:null
-      };
-    });
-    return {
-      revision:renderRevision,
-      phase,round,mode,
-      map:{id:map.id,width:map.width,height:map.height,tiles,objects:(map.objects||[]).map(o=>({...o}))},
-      cores:cores.map(core=>({...core})),
-      presentation:{
-        deploymentPoints:points.map(point=>({id:point.id,name:point.name,owner:point.owner,capturable:point.capturable!==false,
-          area:(point.area||[]).map(t=>({...t})),captureTiles:(point.captureTiles||[]).map(t=>({...t}))})),
-        enemyHandCount:enemyCardState?.zones?.hand?.length||0,
-        enemyDeckCount:enemyCardState?.zones?.deck?.length||0
-      },
-      units:units.filter(u=>u.alive).map(u=>({
-        id:u.id,x:u.x,y:u.y,z:Number(u.z??(TacticalEngine.elevation(TacticalEngine.tile(map,u.x,u.y))||0)),team:u.team==="P"?"PLAYER":"ENEMY",
-        name:u.character.name,visualId:u.character.visualId||null,
-        hp:u.hp,maxHp:Number(u.character.combat.hp||u.hp||1),
-        selected:u===selected,finished:!!u.acted,moved:!!u.moved,acted:!!u.acted
-      }))
-    };
-  }
 
   function clickBattleTile(x,y){
     const tile=TacticalEngine.tile(map,Number(x),Number(y));
@@ -819,52 +705,7 @@
     window.dispatchEvent(new CustomEvent("cardtactics:battle-render",{detail:{revision:renderRevision}}));
   }
 
-  function combatPreview(attacker,target,skill){
-    if(!attacker?.alive||!target?.alive||!skill||target.kind==="CORE")return null;
-    const resolved=effectiveSkill(attacker,skill);
-    const at=TacticalEngine.tile(map,attacker.x,attacker.y),dt=TacticalEngine.tile(map,target.x,target.y);
-    const weapon=attacker.character.weapons?.[resolved.weapon];
-    const type=resolved.attackType==="INHERIT"?weapon?.attackType:resolved.attackType;
-    const terrainAcc=at?.terrain==="HIGH_GROUND"&&(type==="SHOT"||type==="MAGIC")&&at.elevation>dt?.elevation
-      ?Number(TERRAINS[at.terrain]?.rangedAccuracy||0):0;
-    const terrainEva=Number(TERRAINS[dt?.terrain]?.evasion||0);
-    const ac={...attacker.character,modifiers:{...(attacker.character.modifiers||{}),
-      accuracy:Number(attacker.character.modifiers?.accuracy||0)+terrainAcc}};
-    const dc={...target.character,modifiers:{...(target.character.modifiers||{}),
-      evasion:Number(target.character.modifiers?.evasion||0)+terrainEva}};
-    return {
-      skillId:resolved.id,skillName:resolved.name,
-      hit:BattleEngine.hitChance(ac,dc,resolved),
-      crit:BattleEngine.critChance(ac,resolved),
-      terrainAcc,terrainEva
-    };
-  }
 
-  function unitPresentation(unit){
-    if(!unit?.alive)return null;
-    const tile=TacticalEngine.tile(map,unit.x,unit.y);
-    const maxHp=Number(unit.character.combat.hp||unit.hp||1);
-    const combat=unit.character.combat||{};
-    const baseHit=Math.max(BATTLE_RULES.combatParams.minHit,Math.min(BATTLE_RULES.combatParams.maxHit,
-      BATTLE_RULES.combatParams.baseHit+BattleEngine.accuracy(unit.character,{})));
-    let actionState=unit.team===TEAM.ENEMY?"敵方單位":
-      unit.acted?(unit.waited?"已待機":"已完成主動行動 / 可支援"):
-      unit.moved?"已移動 / 可攻擊":"可移動 / 可行動";
-    const preview=selected&&selected!==unit&&selectedSkill&&mode==="attack"
-      ?combatPreview(selected,unit,selectedSkill):null;
-    return {
-      id:unit.id,team:unit.team,name:unit.character.name,visualId:unit.character.visualId||null,
-      hp:unit.hp,maxHp,move:Number(combat.move||0),x:unit.x,y:unit.y,z:Number(unit.z??(tile?.elevation||0)),
-      terrain:tile?TERRAINS[tile.terrain]?.name||tile.terrain:"",elevation:Number(tile?.elevation||0),
-      actionState,
-      stats:{
-        atk:Number(combat.atk||0),def:Number(combat.def||0),matk:Number(combat.matk||0),mdef:Number(combat.mdef||0),
-        hit:baseHit,eva:BattleEngine.evasion(unit.character),
-        crit:BattleEngine.critChance(unit.character,{}),spd:BattleEngine.actionSpeed(unit.character,{})
-      },
-      preview
-    };
-  }
 
   function handleTileClick(tile,unit,core,reachable,targets){
     inspectedTile=tile;
@@ -1260,6 +1101,12 @@
     backFromTargeting,finishActiveSkill,executeEffectSkill,approachForSkill,prepareAttack,
     confirmEngagement,executeEngagement
   }=actionController;
+  if(!window.BattlePresentationController?.create)throw new Error("BattlePresentationController is not loaded.");
+  presentationController=window.BattlePresentationController.create({
+    TEAM,PHASE,
+    state:()=>({map,units,stage,round,phase,mode,selected,selectedSkill,environmentState,inspectedTile,cores,pendingCard,enemyCardState,renderRevision}),
+    targetType,targetableEntities,mapTargetTiles,unitAt,coreAt,effectiveSkill
+  });
   if(!window.TacticalEnemyController?.create)throw new Error("TacticalEnemyController is not loaded.");
   enemyController=window.TacticalEnemyController.create(battleContext);
   if(!window.CardPhaseController?.create)throw new Error("CardPhaseController is not loaded.");
@@ -1281,7 +1128,7 @@
     getEnemyCardState:()=>enemyCardState,
     getEnemyPresentation:()=>({...enemyView}),
     getBattleMap:()=>map,
-    getBattleSnapshot:()=>battleSnapshot(),
+    getBattleSnapshot:()=>presentationController.battleSnapshot(),
     clickBattleTile,
     getStage:()=>stage,
     getCores:()=>cores.map(core=>({...core})),
@@ -1295,7 +1142,7 @@
       ?{x:selected.x,y:selected.y}:null,
     getInspectedUnitPresentation:()=>{
       const unit=inspectedTile?unitAt(inspectedTile.x,inspectedTile.y):selected;
-      return unitPresentation(unit||selected);
+      return presentationController.unitPresentation(unit||selected);
     },
     playCard:cardId=>cardPhaseController.select(cardId),
     endCardPhase:()=>cardPhaseController.end(),
