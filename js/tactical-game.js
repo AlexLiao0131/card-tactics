@@ -36,11 +36,12 @@
     const moved=result.steps?.length||0;
     pushLog(`${source.character.name} → ${target.character.name}：${effect.type==="PULL"?"拉近":"擊退"} ${moved} 格。`,"BATTLE");
     if(result.falls?.length){
-      const drops=result.falls.map(f=>`H${f.from}→H${f.to}`).join("、");
+      const drops=result.falls.map(f=>`Z${f.from}→H${f.to}`).join("、");
       pushLog(`${target.character.name} 墜落 ${drops}｜墜落傷害 ${result.fallDamage}｜HP ${target.hp}。`,"BATTLE");
     }else{
       pushLog(`${target.character.name} 強制位移完成｜無墜落傷害。`,"DETAIL");
     }
+    if(result.applied&&target.alive)enterTile(target);
   }
 
   function handleDefeated(unit,source,skillOrEffect){
@@ -54,25 +55,28 @@
 
 
 
-  function applyForcedMovement(source,target,distance,{name="強制位移"}={}){
-    const result=PostEngagementEngine.forcedMove({map,units,source,target,effect:{type:"KNOCKBACK",distance}});
+  function applyForcedMovement(source,target,distance,{name="強制位移",lift=0,damage=0,damageType="PHYSICAL"}={}){
+    if(damage>0&&target?.alive)damageUnitFlat(target,damage,name);
+    if(!target?.alive)return {applied:false,defeated:true,steps:[],falls:[],fallDamage:0};
+    const result=PostEngagementEngine.forcedMove({map,units,source,target,effect:{type:"KNOCKBACK",distance,lift}});
     if(result.applied){
-      pushLog(`${target.character.name} 被${name}推離 ${result.steps.length} 格。`,"BATTLE");
-      if(result.falls?.length)pushLog(`${target.character.name} 墜落｜墜落傷害 ${result.fallDamage}｜HP ${target.hp}。`,"BATTLE");
-      result.steps.forEach(()=>enterTile(target));
+      if(result.airborne)pushLog(`${target.character.name} 被${name}捲起至 Z${result.travelZ}，位移 ${result.steps.length} 格。`,"BATTLE");
+      else pushLog(`${target.character.name} 被${name}推離 ${result.steps.length} 格。`,"BATTLE");
+      if(result.landing)pushLog(`${target.character.name} 落地 Z${result.landing.fromZ}→H${result.landing.toZ}${result.fallDamage?`｜墜落傷害 ${result.fallDamage}｜HP ${target.hp}`:"｜無墜落傷害"}。`,result.fallDamage?"BATTLE":"DETAIL");
+      if(target.alive)enterTile(target);
     }
-    if(result.defeated)handleDefeated(target,source,{type:"ENVIRONMENT_FORCE",name});
+    if(result.defeated)handleDefeated(target,source,{type:"ENVIRONMENT_FORCE",name,damageType});
     return result;
   }
 
   function traverseUnitPath(unit,path,{kind="UNIT"}={}){
     for(const tile of path||[]){
-      unit.x=tile.x;unit.y=tile.y;enterTile(unit);
+      unit.x=tile.x;unit.y=tile.y;unit.z=Number(tile.elevation||0);enterTile(unit);
       if(!unit.alive)return {completed:false,reason:"DEFEATED"};
       const interaction=EnvironmentEngine.pathInteraction({state:environmentState,x:tile.x,y:tile.y,kind});
       const forced=interaction.effects?.find(e=>e.type==="FORCED_MOVE");
       if(forced){
-        applyForcedMovement({x:tile.x,y:tile.y},unit,forced.distance,{name:forced.effect?.type==="FIRE_TORNADO"?"火龍捲":"龍捲風"});
+        applyForcedMovement({x:tile.x,y:tile.y},unit,forced.distance,{name:forced.effect?.type==="FIRE_TORNADO"?"火龍捲":"龍捲風",lift:Number(forced.lift||forced.effect?.lift||0),damage:Number(forced.damage||forced.effect?.damage||0),damageType:forced.effect?.damageType||"PHYSICAL"});
         return {completed:false,reason:"ENVIRONMENT_FORCE"};
       }
     }
@@ -107,7 +111,7 @@
     const sourceCharacter=CHARACTERS[characterId];
     const character=JSON.parse(JSON.stringify(sourceCharacter));
     return {
-      id,team,character,x,y,
+      id,team,character,x,y,z:Number(TacticalEngine.elevation(TacticalEngine.tile(map,x,y))||0),
       hp:character.combat.hp,
       alive:true,
       moved:false,
@@ -277,6 +281,7 @@
       characterId:unit.character.id,
       x:unit.x,
       y:unit.y,
+      z:Number(unit.z??(TacticalEngine.elevation(TacticalEngine.tile(map,unit.x,unit.y))||0)),
       team:unit.team===TEAM.PLAYER?"PLAYER":"ENEMY"
     });
     applyEnvironmentHazardToUnit(unit,{reason:"踏入燃燒區"});
@@ -760,7 +765,7 @@
         enemyDeckCount:enemyCardState?.zones?.deck?.length||0
       },
       units:units.filter(u=>u.alive).map(u=>({
-        id:u.id,x:u.x,y:u.y,team:u.team==="P"?"PLAYER":"ENEMY",
+        id:u.id,x:u.x,y:u.y,z:Number(u.z??(TacticalEngine.elevation(TacticalEngine.tile(map,u.x,u.y))||0)),team:u.team==="P"?"PLAYER":"ENEMY",
         name:u.character.name,visualId:u.character.visualId||null,
         hp:u.hp,maxHp:Number(u.character.combat.hp||u.hp||1),
         selected:u===selected,finished:!!u.acted,moved:!!u.moved,acted:!!u.acted
@@ -825,7 +830,7 @@
       ?combatPreview(selected,unit,selectedSkill):null;
     return {
       id:unit.id,team:unit.team,name:unit.character.name,visualId:unit.character.visualId||null,
-      hp:unit.hp,maxHp,move:Number(combat.move||0),x:unit.x,y:unit.y,
+      hp:unit.hp,maxHp,move:Number(combat.move||0),x:unit.x,y:unit.y,z:Number(unit.z??(tile?.elevation||0)),
       terrain:tile?TERRAINS[tile.terrain]?.name||tile.terrain:"",elevation:Number(tile?.elevation||0),
       actionState,
       stats:{

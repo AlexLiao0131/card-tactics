@@ -12,7 +12,7 @@ window.CARDS={
   imperial_cavalry_card:{id:"imperial_cavalry_card",name:"帝國騎兵",type:"CHARACTER",characterId:"imperial_cavalry",faction:"IMPERIAL",unitType:"UNIT",cost:5},
   thunderstorm_card:{id:"thunderstorm_card",name:"雷雨",type:"SPELL",spellType:"WEATHER",faction:"NEUTRAL",cost:5,effect:{type:"WEATHER",weather:"THUNDERSTORM",lightning:true}},
   wildfire_card:{id:"wildfire_card",name:"野火",type:"SPELL",spellType:"TACTICAL",faction:"NEUTRAL",cost:4,effect:{type:"AREA_FIRE",radius:1,forces:["FIRE"]}},
-  tornado_card:{id:"tornado_card",name:"龍捲風",type:"SPELL",spellType:"TACTICAL",faction:"NEUTRAL",cost:5,effect:{type:"AREA_PUSH",radius:1,distance:2,damage:20,forces:["WIND"],fireTornadoDamage:45}},
+  tornado_card:{id:"tornado_card",name:"龍捲風",type:"SPELL",spellType:"TACTICAL",faction:"NEUTRAL",cost:5,effect:{type:"AREA_PUSH",radius:1,distance:2,lift:3,damage:20,forces:["WIND"],fireTornadoDamage:45}},
   miracle_card:{id:"miracle_card",name:"神跡",type:"SPELL",spellType:"HEAL",faction:"NEUTRAL",cost:6,effect:{type:"AREA_HEAL",radius:1,heal:80,team:"PLAYER"}},
   fog_card:{id:"fog_card",name:"迷霧",type:"SPELL",spellType:"WEATHER",faction:"NEUTRAL",cost:3,effect:{type:"WEATHER",weather:"FOG"}},
   starfall_card:{id:"starfall_card",name:"星隕",type:"SPELL",spellType:"TACTICAL",faction:"NEUTRAL",cost:10,effect:{type:"AREA_DAMAGE",radius:2,damage:100,forces:["HEAVY_FIRE","EXPLOSION","IMPACT"]}},

@@ -125,16 +125,16 @@ window.EnvironmentEngine=(()=>{
     if(environment===ELEMENT.STONE&&forceSet.has(FORCE.EXPLOSION)){addEffect(state,x,y,{type:EFFECT.FRAGMENTS,duration:1,damageType:"PHYSICAL",radius:1});const object=objectAt(map,x,y),destroyed=destroyStoneObject(map,state,object);events.push({type:"STONE_FRAGMENT",x,y,effect:EFFECT.FRAGMENTS,destroyed,objectId:object?.id||null});}
     return events;
   }
-  function createTornado(state,x,y,{duration=2,pushDistance=2,damage=20,fireDamage=45}={}){
+  function createTornado(state,x,y,{duration=2,pushDistance=2,lift=3,damage=20,fireDamage=45}={}){
     const burning=isBurning(state,x,y);
-    if(burning){addEffect(state,x,y,{type:EFFECT.FIRE_TORNADO,duration,pushDistance,lightRadius:3,damage:fireDamage,damageType:"FIRE",visionBlock:false});return {type:"FIRE_TORNADO_CREATED",x,y,effect:EFFECT.FIRE_TORNADO};}
-    addEffect(state,x,y,{type:EFFECT.TORNADO,duration,pushDistance,damage,damageType:"PHYSICAL",visionBlock:false});return {type:"TORNADO_CREATED",x,y,effect:EFFECT.TORNADO};
+    if(burning){addEffect(state,x,y,{type:EFFECT.FIRE_TORNADO,duration,pushDistance,lift,lightRadius:3,damage:fireDamage,damageType:"FIRE",visionBlock:false});return {type:"FIRE_TORNADO_CREATED",x,y,effect:EFFECT.FIRE_TORNADO};}
+    addEffect(state,x,y,{type:EFFECT.TORNADO,duration,pushDistance,lift,damage,damageType:"PHYSICAL",visionBlock:false});return {type:"TORNADO_CREATED",x,y,effect:EFFECT.TORNADO};
   }
   function pathInteraction({state,x,y,kind="UNIT"}={}){
     const effects=effectAt(state,x,y),tornado=effects.find(e=>e.type===EFFECT.FIRE_TORNADO)||effects.find(e=>e.type===EFFECT.TORNADO);
     if(!tornado||kind==="SPACE")return {interrupted:false,effects:[]};
     if(kind==="PROJECTILE")return {interrupted:false,effects:[{type:"WIND_FIELD",effect:tornado}]};
-    return {interrupted:true,effects:[{type:"FORCED_MOVE",effect:tornado,distance:Number(tornado.pushDistance||2)}]};
+    return {interrupted:true,effects:[{type:"FORCED_MOVE",effect:tornado,distance:Number(tornado.pushDistance||2),lift:Number(tornado.lift||0),damage:Number(tornado.damage||0)}]};
   }
   function tick(state){for(const [k,list] of [...state.effects.entries()]){const next=[];for(const effect of list){if(effect.duration==null){next.push(effect);continue;}const updated={...effect,duration:effect.duration-1};if(updated.duration>0)next.push(updated);}if(next.length)state.effects.set(k,next);else state.effects.delete(k);}}
   function lightSources(state){const out=[];for(const list of state.effects.values())for(const effect of list)if(effect.lightRadius>0)out.push({x:effect.x,y:effect.y,radius:effect.lightRadius,source:effect.type});return out;}

@@ -66,15 +66,14 @@ function create(ctx){
       affected.forEach(tile=>(EnvironmentEngine.apply({map:s.map,state:s.environmentState,x:tile.x,y:tile.y,forces:effect.forces||["FIRE"]})||[]).forEach(ctx.logEnvironmentEvent));
       affected.forEach(tile=>{const u=ctx.unitAt(tile.x,tile.y);if(u)ctx.applyEnvironmentHazardToUnit(u,{reason:"遭野火波及"});});
     }else if(effect.type==="AREA_PUSH"){
-      const events=affected.map(tile=>EnvironmentEngine.createTornado(s.environmentState,tile.x,tile.y,{duration:2,pushDistance:Number(effect.distance||2),damage:Number(effect.damage||20),fireDamage:Number(effect.fireTornadoDamage||45)}));
+      const events=affected.map(tile=>EnvironmentEngine.createTornado(s.environmentState,tile.x,tile.y,{duration:2,pushDistance:Number(effect.distance||2),lift:Number(effect.lift||3),damage:Number(effect.damage||20),fireDamage:Number(effect.fireTornadoDamage||45)}));
       events.forEach(ctx.logEnvironmentEvent);
       if(events.some(e=>e.type==="FIRE_TORNADO_CREATED"))ctx.pushLog("🔥🌪 火焰與龍捲風結合，形成火龍捲！","SYSTEM");
       affected.forEach(tile=>{
         const u=ctx.unitAt(tile.x,tile.y);if(!u)return;
         const active=EnvironmentEngine.effectAt(s.environmentState,tile.x,tile.y);
         const wind=active.find(e=>e.type===EnvironmentEngine.EFFECT.FIRE_TORNADO)||active.find(e=>e.type===EnvironmentEngine.EFFECT.TORNADO);
-        ctx.damageUnitFlat(u,Number(wind?.damage||effect.damage||20),wind?.type===EnvironmentEngine.EFFECT.FIRE_TORNADO?"火龍捲":card.name);
-        if(u.alive)ctx.applyForcedMovement(center,u,Number(wind?.pushDistance||effect.distance||2),{name:wind?.type===EnvironmentEngine.EFFECT.FIRE_TORNADO?"火龍捲":"龍捲風"});
+        if(u.alive)ctx.applyForcedMovement(center,u,Number(wind?.pushDistance||effect.distance||2),{name:wind?.type===EnvironmentEngine.EFFECT.FIRE_TORNADO?"火龍捲":"龍捲風",lift:Number(wind?.lift||effect.lift||0),damage:Number(wind?.damage||effect.damage||0),damageType:wind?.damageType||"PHYSICAL"});
       });
     }else if(effect.type==="AREA_HEAL"){
       affected.forEach(tile=>{const u=ctx.unitAt(tile.x,tile.y);if(!u?.alive||u.team!==TEAM.PLAYER)return;const before=u.hp;u.hp=Math.min(u.character.combat.hp,u.hp+Number(effect.heal||0));ctx.pushLog(`${card.name} → ${u.character.name}｜回復 ${u.hp-before} HP｜HP ${u.hp}。`,"BATTLE");});

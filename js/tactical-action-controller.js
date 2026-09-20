@@ -33,7 +33,7 @@
     }
 
     function beginPendingMove(unit){
-      pendingMove={unitId:unit.id,x:unit.x,y:unit.y,facing:unit.facing};
+      pendingMove={unitId:unit.id,x:unit.x,y:unit.y,z:unit.z,facing:unit.facing};
     }
 
     function commitPendingMove(unit){
@@ -118,7 +118,7 @@
       ctx.pushLog(`${attacker.character.name} 使用 ${skill.name}｜中心 (${center.x},${center.y})。`,"BATTLE");
       if(skill.moveToTarget&&!ctx.unitAt(center.x,center.y)){
         if(skill.shape==="W_STEP"){
-          attacker.x=center.x;attacker.y=center.y;ctx.enterTile(attacker);
+          attacker.x=center.x;attacker.y=center.y;attacker.z=Number(TacticalEngine.elevation(TacticalEngine.tile(map,center.x,center.y))||0);ctx.enterTile(attacker);
           ctx.pushLog(`${attacker.character.name} 隨 ${skill.name} 進行空間移動至 (${center.x},${center.y})。`,"BATTLE");
         }else{
           const moveResult=ctx.traverseUnitPath(attacker,ctx.lineTiles(attacker,center),{kind:"UNIT"});
@@ -134,7 +134,7 @@
     function cancelPendingMove(){
       const {selected}=state();
       if(!selected||pendingMove?.unitId!==selected.id||selected.acted)return false;
-      selected.x=pendingMove.x;selected.y=pendingMove.y;if(pendingMove.facing)selected.facing=pendingMove.facing;
+      selected.x=pendingMove.x;selected.y=pendingMove.y;selected.z=pendingMove.z;if(pendingMove.facing)selected.facing=pendingMove.facing;
       selected.moved=false;pendingMove=null;ctx.setCommandPanelCollapsed(false);ctx.setMode("command");
       ctx.pushLog(`${selected.character.name} 取消移動，返回原位置。`,"SYSTEM");ctx.render();ctx.emitState();return true;
     }
