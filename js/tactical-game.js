@@ -9,7 +9,7 @@
   let pendingEngagement=null;
   let supportSelection=new Map();
   let pendingCopySkill=null;
-  let battleContext=null,enemyController=null,cardPhaseController=null,presentationController=null,objectiveController=null,environmentController=null;
+  let battleContext=null,enemyController=null,cardPhaseController=null,presentationController=null,objectiveController=null,environmentController=null,coreCaptureController=null;
   let renderRevision=0;
 
   // Engagement Step 4: enemy SINGLE attacks pause here until the player chooses a reaction.
@@ -151,52 +151,16 @@
     return unit;
   }
 
-  function captureOwnerForTeam(team){
-    return team===TEAM.PLAYER?"PLAYER":team===TEAM.ENEMY?"ENEMY":null;
-  }
-
-  function coreForOwner(owner){return cores.find(core=>core.owner===owner)||null;}
-  function enemyOwner(owner){return owner==="PLAYER"?"ENEMY":"PLAYER";}
-  function coreAt(x,y){return cores.find(core=>core.hp>0&&core.x===x&&core.y===y)||null;}
-  function capturePointForUnit(unit){return DeploymentEngine.pointAt(stage,unit?.x,unit?.y);}
-  function canUnitCapture(unit){
-    const point=capturePointForUnit(unit);
-    return !!point&&DeploymentEngine.canCapture({stage,units,unit,point});
-  }
-  function damageCore(owner,damage,source){
-    const core=coreForOwner(owner);if(!core||core.hp<=0)return 0;
-    const dealt=Math.min(core.hp,Math.max(0,Math.round(Number(damage||0))));
-    core.hp=Math.max(0,core.hp-dealt);
-    pushLog(`${source} → ${core.name}｜${dealt} 傷害｜CORE HP ${core.hp}/${core.maxHp}。`,"BATTLE");
-    objectiveController.checkMatchEnd();return dealt;
-  }
-  function executeCapture(unit){
-    if(!unit?.alive||unit.acted)return false;
-    commitPendingMove(unit);
-    const point=capturePointForUnit(unit);
-    if(!point||!DeploymentEngine.canCapture({stage,units,unit,point}))return false;
-    const owner=captureOwnerForTeam(unit.team),previousOwner=point.owner;
-    if(!DeploymentEngine.capture(stage,point.id,owner))return false;
-    const sideName=owner==="PLAYER"?"我方":"敵方";
-    pushLog(`${unit.character.name} 佔領「${point.name}」｜${previousOwner} → ${owner}。`,"SYSTEM");
-    const damage=Number(stage.captureDamage||0);
-    if(damage>0)damageCore(enemyOwner(owner),damage,`${point.name} Core 砲擊`);
-    stageEvent({type:"DEPLOYMENT_POINT_CAPTURED",pointId:point.id,owner,previousOwner,unitId:unit.id,characterId:unit.character.id,x:unit.x,y:unit.y});
-    unit.moved=true;unit.acted=true;unit.waited=true;mode="inspect";
-    window.dispatchEvent(new CustomEvent("cardtactics:state"));render();return true;
-  }
-  function coreCombatTarget(core,attackerTeam){
-    if(!core||core.hp<=0)return null;
-    return {kind:"CORE",id:`CORE:${core.owner}`,x:core.x,y:core.y,team:attackerTeam===TEAM.PLAYER?TEAM.ENEMY:TEAM.PLAYER,alive:true,core};
-  }
-  function combatTargetEntities(unit){
-    const entities=[...units];
-    if(stage?.ruleset==="CORE_CAPTURE"){
-      const owner=unit.team===TEAM.PLAYER?"ENEMY":"PLAYER",core=coreForOwner(owner),target=coreCombatTarget(core,unit.team);
-      if(target)entities.push(target);
-    }
-    return entities;
-  }
+  function captureOwnerForTeam(team){return coreCaptureController.ownerForTeam(team);}
+  function coreForOwner(owner){return coreCaptureController.coreForOwner(owner);}
+  function enemyOwner(owner){return coreCaptureController.enemyOwner(owner);}
+  function coreAt(x,y){return coreCaptureController.coreAt(x,y);}
+  function capturePointForUnit(unit){return coreCaptureController.capturePointForUnit(unit);}
+  function canUnitCapture(unit){return coreCaptureController.canUnitCapture(unit);}
+  function damageCore(owner,damage,source){return coreCaptureController.damageCore(owner,damage,source);}
+  function executeCapture(unit){return coreCaptureController.executeCapture(unit);}
+  function coreCombatTarget(core,attackerTeam){return coreCaptureController.coreCombatTarget(core,attackerTeam);}
+  function combatTargetEntities(unit){return coreCaptureController.combatTargetEntities(unit);}
   function applyEnvironmentHazardToUnit(...args){return environmentController.applyEnvironmentHazardToUnit(...args);}
 
   function applyEnvironmentHazards(...args){return environmentController.applyEnvironmentHazards(...args);}
@@ -928,6 +892,13 @@
     state:()=>({stage,stageState,round,units,cores,cardState,enemyCardState,matchResult}),
     setMatchResult:value=>{matchResult=value;phase=PHASE.ENDED;},
     onMatchEnd:value=>{clearSelection();clearEnemyReaction();pushLog(`Round ${round}｜${value}｜關卡目標已${value==="VICTORY"?"達成":"失敗"}。`,"SYSTEM");}
+  });
+  if(!window.BattleCoreCaptureController?.create)throw new Error("BattleCoreCaptureController is not loaded.");
+  coreCaptureController=window.BattleCoreCaptureController.create({
+    TEAM,state:()=>({stage,units,cores}),pushLog,
+    checkMatchEnd:()=>objectiveController.checkMatchEnd(),
+    commitPendingMove:unit=>commitPendingMove(unit),stageEvent,
+    onCaptureComplete:()=>{mode="inspect";window.dispatchEvent(new CustomEvent("cardtactics:state"));render();}
   });
   if(!window.BattleEnvironmentController?.create)throw new Error("BattleEnvironmentController is not loaded.");
   environmentController=window.BattleEnvironmentController.create({
