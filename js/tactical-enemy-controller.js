@@ -56,9 +56,11 @@
         const steps=[...(path||[])];
         const next=()=>{
           if(!steps.length||!enemy.alive){enemy.moved=true;done?.();return;}
-          const tile=steps.shift();enemy.x=tile.x;enemy.y=tile.y;ctx.enterTile(enemy);
-          ctx.pushLog(`${enemy.character.name} 移動至 (${tile.x},${tile.y})。`,"DETAIL");
-          showStep("MOVE",`${enemy.character.name} 移動 → (${tile.x},${tile.y})`,{unitId:enemy.id});
+          const tile=steps.shift();
+          const result=ctx.traverseUnitPath(enemy,[tile],{kind:"UNIT"});
+          ctx.pushLog(`${enemy.character.name} 移動至 (${enemy.x},${enemy.y})。`,"DETAIL");
+          showStep("MOVE",`${enemy.character.name} 移動 → (${enemy.x},${enemy.y})`,{unitId:enemy.id});
+          if(!result?.completed||!enemy.alive){enemy.moved=true;done?.();return;}
           afterStep(next,260);
         };
         next();
