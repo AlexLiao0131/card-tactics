@@ -926,7 +926,14 @@
 
   function renderCollapsedCommandButton(){skillBar.classList.add("command-panel-collapsed");}
 
-  function appendEngagementUnit(unit,side){
+  function engagementOdds(attacker,defender,skill){
+    if(!attacker?.character||!defender?.character||!skill)return null;
+    const resolved=effectiveSkill(attacker,skill);
+    const hit=Math.max(0,Math.min(100,Math.round(BattleEngine.hitChance(attacker.character,defender.character,resolved))));
+    return {hit,evade:100-hit};
+  }
+
+  function appendEngagementUnit(unit,side,oddsLabel=""){
     const max=Math.max(1,Number(unit?.character?.combat?.hp||unit?.hp||1));
     const hp=Math.max(0,Number(unit?.hp||0));
     const pct=Math.max(0,Math.min(100,hp/max*100));
@@ -936,7 +943,8 @@
       `<div class="engagement-figure"><span>${shortName(unit.character.name)}</span></div>`+
       `<strong>${unit.character.name}</strong>`+
       `<div class="engagement-hp"><i style="width:${pct}%"></i></div>`+
-      `<small>HP ${hp} / ${max}</small>`;
+      `<small>HP ${hp} / ${max}</small>`+
+      (oddsLabel?`<small><b>${oddsLabel}</b></small>`:"");
     return card;
   }
 
@@ -946,12 +954,19 @@
     stage.className="engagement-stage";
     const player=attacker.team===TEAM.PLAYER?attacker:defender;
     const enemy=attacker.team===TEAM.ENEMY?attacker:defender;
-    stage.appendChild(appendEngagementUnit(player,"player"));
+    const odds=engagementOdds(attacker,defender,skill);
+    const labelFor=unit=>{
+      if(!odds)return "";
+      if(unit===attacker)return `命中率 ${odds.hit}%`;
+      if(unit===defender)return `迴避率 ${odds.evade}%`;
+      return "";
+    };
+    stage.appendChild(appendEngagementUnit(player,"player",labelFor(player)));
     const center=document.createElement("div");
     center.className="engagement-versus";
     center.innerHTML=`<b>VS</b><span>${skill?.name||"交戰"}</span>`;
     stage.appendChild(center);
-    stage.appendChild(appendEngagementUnit(enemy,"enemy"));
+    stage.appendChild(appendEngagementUnit(enemy,"enemy",labelFor(enemy)));
     skillBar.appendChild(stage);
   }
 
