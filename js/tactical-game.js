@@ -9,7 +9,7 @@
   let pendingEngagement=null;
   let supportSelection=new Map();
   let pendingCopySkill=null;
-  let battleContext=null,enemyController=null,cardPhaseController=null,presentationController=null;
+  let battleContext=null,enemyController=null,cardPhaseController=null,presentationController=null,objectiveController=null;
   let renderRevision=0;
 
   // Engagement Step 4: enemy SINGLE attacks pause here until the player chooses a reaction.
@@ -247,7 +247,7 @@
     const dealt=Math.min(core.hp,Math.max(0,Math.round(Number(damage||0))));
     core.hp=Math.max(0,core.hp-dealt);
     pushLog(`${source} → ${core.name}｜${dealt} 傷害｜CORE HP ${core.hp}/${core.maxHp}。`,"BATTLE");
-    checkMatchEnd();return dealt;
+    objectiveController.checkMatchEnd();return dealt;
   }
   function executeCapture(unit){
     if(!unit?.alive||unit.acted)return false;
@@ -389,31 +389,8 @@
     mode="idle";
   }
 
-  function hasPendingReinforcement(team){
-    const script=window.STAGE_SCRIPTS?.[stageState?.scriptId];
-    if(!script)return false;
-    return (script.events||[]).some(item=>{
-      if(item.once&&stageState.fired?.has(item.id))return false;
-      return (item.actions||[]).some(action=>action.type==="SPAWN"&&action.team===team);
-    });
-  }
 
-  function objectiveContext(){
-    const areas={};
-    for(const point of DeploymentEngine.points(stage))areas[point.id]=point.area||point.captureTiles||[];
-    for(const [id,area] of Object.entries(stage.objectiveAreas||{}))areas[id]=area;
-    return {round,units,cores,cardState,enemyCardState,areas,deploymentPoints:DeploymentEngine.points(stage),
-      isCharacterCard:id=>CardDatabase.isCharacter(CardDatabase.get(id)),hasPendingReinforcement};
-  }
 
-  function checkMatchEnd(){
-    if(matchResult)return true;
-    const result=ObjectiveEngine.evaluateMatch(stage,objectiveContext());
-    if(!result.ended)return false;
-    phase=PHASE.ENDED;matchResult=result.result;clearSelection();clearEnemyReaction();
-    pushLog(`Round ${round}｜${matchResult}｜關卡目標已${matchResult==="VICTORY"?"達成":"失敗"}。`,"SYSTEM");
-    return true;
-  }
 
   function resolveWeatherEvents(){
     if(!environmentState)return;
@@ -438,10 +415,10 @@
     stageEvent({type:"ROUND_START",round,team:"PLAYER"});
     if(environmentState){
       applyEnvironmentHazards({reason:"回合開始仍處於燃燒區"});
-      if(checkMatchEnd()){render();return;}
+      if(objectiveController.checkMatchEnd()){render();return;}
       EnvironmentEngine.tick(environmentState);
       resolveWeatherEvents();
-      if(checkMatchEnd()){render();return;}
+      if(objectiveController.checkMatchEnd()){render();return;}
     }
     cardPhaseController.begin();
   }
@@ -452,7 +429,7 @@
       state:()=>({map,units,stage,round,phase,matchResult,enemyCardState}),
       map:()=>map,
       living,resetActions,canUseSkill,targetType,combatTargets:combatTargetEntities,coreForOwner,
-      canUnitCapture,executeCapture,enterTile,checkMatchEnd,beginPlayerTurn,pushLog,render,
+      canUnitCapture,executeCapture,enterTile,checkMatchEnd:()=>objectiveController.checkMatchEnd(),beginPlayerTurn,pushLog,render,
       clearSelection,clearEnemyReaction,
       skillList:unit=>SkillDatabase.list(window.EffectEngine?EffectEngine.skillIds(unit):unit.character.skills),
       setPhase:value=>{phase=value;},
@@ -592,7 +569,7 @@
     clearEnemyReaction();
     mode="idle";
 
-    if(checkMatchEnd()){
+    if(objectiveController.checkMatchEnd()){
       render();
       return;
     }
@@ -1106,6 +1083,12 @@
     TEAM,PHASE,
     state:()=>({map,units,stage,round,phase,mode,selected,selectedSkill,environmentState,inspectedTile,cores,pendingCard,enemyCardState,renderRevision}),
     targetType,targetableEntities,mapTargetTiles,unitAt,coreAt,effectiveSkill
+  });
+  if(!window.BattleObjectiveController?.create)throw new Error("BattleObjectiveController is not loaded.");
+  objectiveController=window.BattleObjectiveController.create({
+    state:()=>({stage,stageState,round,units,cores,cardState,enemyCardState,matchResult}),
+    setMatchResult:value=>{matchResult=value;phase=PHASE.ENDED;},
+    onMatchEnd:value=>{clearSelection();clearEnemyReaction();pushLog(`Round ${round}｜${value}｜關卡目標已${value==="VICTORY"?"達成":"失敗"}。`,"SYSTEM");}
   });
   if(!window.TacticalEnemyController?.create)throw new Error("TacticalEnemyController is not loaded.");
   enemyController=window.TacticalEnemyController.create(battleContext);
