@@ -93,7 +93,16 @@ window.EnvironmentEngine=(()=>{
   function removeEffect(state,x,y,type){const k=key(x,y),next=(state.effects.get(k)||[]).filter(e=>e.type!==type);if(next.length)state.effects.set(k,next);else state.effects.delete(k);}
   function destroyStoneObject(map,state,object){if(!object?.destructible)return false;object.destroyed=true;state.destroyedObjects.add(object.id);const tile=tileAt(map,object.x,object.y);if(tile&&object.breaksIntoTerrain)tile.terrain=object.breaksIntoTerrain;return true;}
   function isBurning(state,x,y){return effectAt(state,x,y).some(e=>e.type===EFFECT.BURNING||e.type===EFFECT.FIRE_TORNADO);}
-  function isConductive(map,state,x,y){return isRain(state)||environmentAt(map,x,y)===ELEMENT.WATER;}
+  function isConductive(map,state,x,y){return environmentAt(map,x,y)===ELEMENT.WATER;}
+  function conductiveRegion(map,state,x,y){return ConductivityEngine.connectedRegion(map,{x,y},{isConductiveTile:(tx,ty)=>isConductive(map,state,tx,ty)});}
+  function conductThunder(map,state,x,y,events=[]){
+    const region=conductiveRegion(map,state,x,y);
+    for(const tile of region){
+      addEffect(state,tile.x,tile.y,{type:EFFECT.ELECTRIFIED,duration:1,damage:HAZARD.ELECTRIC_DAMAGE,damageType:"THUNDER"});
+      events.push({type:"ELECTRIC_CONDUCTION",x:tile.x,y:tile.y,effect:EFFECT.ELECTRIFIED,origin:{x,y}});
+    }
+    return region;
+  }
   function apply({map,state,x,y,forces=[]}){
     const forceSet=new Set(forces),environment=environmentAt(map,x,y),events=[];
     const raining=isRain(state),burningBefore=isBurning(state,x,y);
@@ -121,7 +130,7 @@ window.EnvironmentEngine=(()=>{
         }
       }else if(forceSet.has(FORCE.FIRE)){removeEffect(state,x,y,EFFECT.BURNING);events.push({type:"FIRE_EXTINGUISHED",x,y});}
     }
-    if(forceSet.has(FORCE.THUNDER)&&isConductive(map,state,x,y)){addEffect(state,x,y,{type:EFFECT.ELECTRIFIED,duration:1,damage:HAZARD.ELECTRIC_DAMAGE,damageType:"THUNDER"});events.push({type:"ELECTRIC_CONDUCTION",x,y,effect:EFFECT.ELECTRIFIED});}
+    if(forceSet.has(FORCE.THUNDER)&&isConductive(map,state,x,y))conductThunder(map,state,x,y,events);
     if(environment===ELEMENT.STONE&&forceSet.has(FORCE.EXPLOSION)){addEffect(state,x,y,{type:EFFECT.FRAGMENTS,duration:1,damageType:"PHYSICAL",radius:1});const object=objectAt(map,x,y),destroyed=destroyStoneObject(map,state,object);events.push({type:"STONE_FRAGMENT",x,y,effect:EFFECT.FRAGMENTS,destroyed,objectId:object?.id||null});}
     return events;
   }
@@ -140,5 +149,5 @@ window.EnvironmentEngine=(()=>{
   function lightSources(state){const out=[];for(const list of state.effects.values())for(const effect of list)if(effect.lightRadius>0)out.push({x:effect.x,y:effect.y,radius:effect.lightRadius,source:effect.type});return out;}
   function isLit(state,x,y){if(state.timeOfDay!=="NIGHT")return true;return lightSources(state).some(light=>Math.abs(light.x-x)+Math.abs(light.y-y)<=light.radius);}
   function visionModifier(state,x,y){const effects=effectAt(state,x,y);if(effects.some(e=>e.type===EFFECT.STEAM))return{blocked:true,reason:"STEAM"};if(state.timeOfDay==="NIGHT"&&!isLit(state,x,y))return{blocked:false,dark:true,reason:"NIGHT"};return{blocked:false,dark:false,reason:null};}
-  return{ELEMENT,FORCE,EFFECT,HAZARD,WEATHER,WEATHER_RULES,HYDROLOGY,create,setTimeOfDay,setWeather,isRain,lightningRisk,rollWeatherEvent,environmentAt,effectAt,isBurning,isConductive,elevation,waterDepth,fillCapacity,addWater,removeWater,deformTerrain,apply,createTornado,pathInteraction,tick,lightSources,isLit,visionModifier};
+  return{ELEMENT,FORCE,EFFECT,HAZARD,WEATHER,WEATHER_RULES,HYDROLOGY,create,setTimeOfDay,setWeather,isRain,lightningRisk,rollWeatherEvent,environmentAt,effectAt,isBurning,isConductive,conductiveRegion,conductThunder,elevation,waterDepth,fillCapacity,addWater,removeWater,deformTerrain,apply,createTornado,pathInteraction,tick,lightSources,isLit,visionModifier};
 })();
