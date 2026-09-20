@@ -3,6 +3,7 @@ window.BattleSetupEngine=(()=>{
     const stage=StageDatabase.get(stageId);
     if(!stage)throw new Error(`Unknown stage: ${stageId}`);
     const map=MapDatabase.createMap(stage.mapId);
+    if(window.HydrologyEngine)HydrologyEngine.initializeMap(map);
     const stageState=StageEngine.create(stage.scriptId,{victory:stage.victory,defeat:stage.defeat});
     const cores=(stage.cores||[]).map(core=>({...core,hp:Number(core.hp??core.maxHp??0),maxHp:Number(core.maxHp??core.hp??0)}));
     const environmentState=window.EnvironmentEngine?EnvironmentEngine.create(stage.environment||{}):null;

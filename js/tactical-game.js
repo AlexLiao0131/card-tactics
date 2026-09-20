@@ -9,7 +9,7 @@
   let pendingEngagement=null;
   let supportSelection=new Map();
   let pendingCopySkill=null;
-  let battleContext=null,enemyController=null,cardPhaseController=null,presentationController=null,objectiveController=null,environmentController=null,coreCaptureController=null;
+  let battleContext=null,enemyController=null,cardPhaseController=null,presentationController=null,objectiveController=null,environmentController=null,coreCaptureController=null,deathLifecycle=null;
   let renderRevision=0;
 
   // Engagement Step 4: enemy SINGLE attacks pause here until the player chooses a reaction.
@@ -36,14 +36,7 @@
     if(result.applied&&target.alive)enterTile(target);
   }
 
-  function handleDefeated(unit,source,skillOrEffect){
-    stageEvent({type:"UNIT_DEFEATED",unitId:unit.id,characterId:unit.character.id,team:unit.team});
-    const ownerCardState=unit.team===TEAM.PLAYER?cardState:enemyCardState;
-    if(unit.cardId&&ownerCardState){
-      CardPhaseEngine.characterDefeated(ownerCardState,unit.cardId);
-      pushLog(`${unit.character.name} 戰敗，角色卡進入墓地。`,"SYSTEM");
-    }
-  }
+  function handleDefeated(unit,source,skillOrEffect){return deathLifecycle.finalize(unit,source,skillOrEffect);}
 
 
 
@@ -75,6 +68,7 @@
     const setup=BattleSetupEngine.create({stageId:requestedStageId,battleSetup:window.CardTacticsBattleSetup,TEAM});
     ({stage,map,stageState,cores,environmentState,units,cardState,enemyCardState,unitSerial}=setup);
     logState=BattleLog.create();
+    deathLifecycle?.reset?.();
 
     selected=null;
     inspectedTile=null;
@@ -855,6 +849,11 @@
     setMatchResult:value=>{matchResult=value;phase=PHASE.ENDED;},
     onMatchEnd:value=>{clearSelection();clearEnemyReaction();pushLog(`Round ${round}｜${value}｜關卡目標已${value==="VICTORY"?"達成":"失敗"}。`,"SYSTEM");}
   });
+  if(!window.DeathLifecycleEngine?.create)throw new Error("DeathLifecycleEngine is not loaded.");
+  deathLifecycle=window.DeathLifecycleEngine.create({
+    stageEvent,cardStateFor:unit=>unit.team===TEAM.PLAYER?cardState:enemyCardState,pushLog,
+    onFinalized:()=>objectiveController?.checkMatchEnd?.()
+  });
   if(!window.BattleCoreCaptureController?.create)throw new Error("BattleCoreCaptureController is not loaded.");
   coreCaptureController=window.BattleCoreCaptureController.create({
     TEAM,state:()=>({stage,units,cores}),pushLog,
@@ -903,6 +902,7 @@
       const unit=inspectedTile?unitAt(inspectedTile.x,inspectedTile.y):selected;
       return presentationController.unitPresentation(unit||selected);
     },
+    getInspectedTilePresentation:()=>inspectedTile?TileInspectionPresentation.create({map,environmentState,tile:inspectedTile}):null,
     playCard:cardId=>cardPhaseController.select(cardId),
     endCardPhase:()=>cardPhaseController.end(),
     cancelCard:()=>cardPhaseController.cancel(),

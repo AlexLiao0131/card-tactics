@@ -6,61 +6,23 @@ window.EnvironmentEngine=(()=>{
   const WEATHER_RULES={THUNDERSTORM:{lightningChance:0.35,lightningDamage:60,metalWeight:2,waterWeight:2,treeWeight:2}};
   const METAL_EQUIPMENT_IDS=new Set(["black_sword","imperial_sword","standard_sword","blessed_sword","imperial_spear","imperial_hammer","imperial_medium_armor","imperial_heavy_shield_armor","water_medium_armor","imperial_heavy_armor","imperial_heavy_plate","imperial_large_shield"]);
   const HAZARD={BURNING_DAMAGE:20,FIRE_TORNADO_DAMAGE:45,ELECTRIC_DAMAGE:35};
-  const HYDROLOGY={WATERLINE:0,RAIN_FILL_PER_EVENT:1,HEAVY_RAIN_FILL_PER_EVENT:2};
+  const HYDROLOGY=Object.freeze({WATERLINE:HydrologyEngine.WATERLINE,RAIN_FILL_PER_EVENT:HydrologyEngine.RAIN_FILL_PER_EVENT,HEAVY_RAIN_FILL_PER_EVENT:HydrologyEngine.HEAVY_RAIN_FILL_PER_EVENT});
   function key(x,y){return `${x},${y}`;}
   function tileAt(map,x,y){return map?.tiles?.find(t=>t.x===x&&t.y===y)||null;}
   function objectAt(map,x,y){return (map?.objects||[]).find(o=>!o.destroyed&&o.x===x&&o.y===y)||null;}
-  function elevation(tile){return Number(tile?.elevation||0);}
-  function waterDepth(tile){return Math.max(0,Number(tile?.waterDepth||0));}
+  const elevation=tile=>HydrologyEngine.elevation(tile);
+  const waterDepth=tile=>HydrologyEngine.waterDepth(tile);
   function environmentAt(map,x,y){const object=objectAt(map,x,y);if(object?.environment)return object.environment;const tile=tileAt(map,x,y);return TERRAINS[tile?.terrain]?.environment||ELEMENT.NONE;}
   function create({timeOfDay="DAY",weather="CLEAR"}={}){return{timeOfDay,weather:weather||WEATHER.CLEAR,effects:new Map(),destroyedObjects:new Set()};}
   function setTimeOfDay(state,timeOfDay){state.timeOfDay=timeOfDay==="NIGHT"?"NIGHT":"DAY";}
-  function fillCapacity(tile){return Math.max(0,HYDROLOGY.WATERLINE-elevation(tile));}
-  function syncWaterTerrain(tile,events=[]){
-    if(!tile)return;
-    const depth=waterDepth(tile),capacity=fillCapacity(tile);
-    if(capacity>0&&depth>=capacity&&tile.terrain!=="WATER"){
-      tile.dryTerrain=tile.terrain==="MUD"?"PLAIN":tile.terrain;
-      tile.terrain="WATER";
-      events.push({type:"BASIN_FILLED",x:tile.x,y:tile.y,elevation:elevation(tile),waterDepth:depth});
-    }else if(tile.terrain==="WATER"&&tile.dryTerrain&&depth<capacity){
-      tile.terrain=tile.dryTerrain;delete tile.dryTerrain;
-      events.push({type:"BASIN_DRAINED",x:tile.x,y:tile.y,elevation:elevation(tile),waterDepth:depth});
-    }
-  }
-  function addWater(tile,amount,events=[]){
-    if(!tile||fillCapacity(tile)<=0)return 0;
-    const before=waterDepth(tile),next=Math.min(fillCapacity(tile),before+Math.max(0,Number(amount||0)));
-    tile.waterDepth=next;
-    if(next!==before)events.push({type:"WATER_ACCUMULATED",x:tile.x,y:tile.y,elevation:elevation(tile),waterDepth:next,capacity:fillCapacity(tile)});
-    syncWaterTerrain(tile,events);
-    return next-before;
-  }
-  function removeWater(tile,amount,events=[]){
-    if(!tile)return 0;
-    const before=waterDepth(tile),next=Math.max(0,before-Math.max(0,Number(amount||0)));
-    tile.waterDepth=next;
-    if(next!==before)events.push({type:"WATER_REDUCED",x:tile.x,y:tile.y,elevation:elevation(tile),waterDepth:next});
-    syncWaterTerrain(tile,events);
-    return before-next;
-  }
-  function deformTerrain(map,x,y,{deltaElevation=0,setElevation=null,source="TERRAIN_DEFORMATION"}={}){
-    const tile=tileAt(map,x,y);if(!tile)return[];
-    const before=elevation(tile),after=setElevation==null?before+Number(deltaElevation||0):Number(setElevation);
-    if(!Number.isFinite(after)||after===before)return[];
-    tile.elevation=after;
-    const events=[{type:"ELEVATION_CHANGED",x,y,from:before,to:after,source}];
-    if(after>=HYDROLOGY.WATERLINE&&tile.dryTerrain){
-      tile.terrain=tile.dryTerrain;delete tile.dryTerrain;tile.waterDepth=0;
-    }else syncWaterTerrain(tile,events);
-    return events;
-  }
+  const fillCapacity=tile=>HydrologyEngine.fillCapacity(tile);
+  const addWater=(tile,amount,events=[])=>HydrologyEngine.addWater(tile,amount,events);
+  const removeWater=(tile,amount,events=[])=>HydrologyEngine.removeWater(tile,amount,events);
+  const deformTerrain=(map,x,y,options={})=>HydrologyEngine.deformTerrain(map,x,y,options);
   function applyRainToTerrain(map,state){
-    const events=[],amount=state?.weather===WEATHER.RAIN?HYDROLOGY.RAIN_FILL_PER_EVENT:HYDROLOGY.HEAVY_RAIN_FILL_PER_EVENT;
-    for(const tile of map?.tiles||[]){
-      if(fillCapacity(tile)>0){addWater(tile,amount,events);continue;}
-      if(tile.terrain==="PLAIN"){tile.terrain="MUD";events.push({type:"MUD_CREATED",x:tile.x,y:tile.y});}
-    }
+    const heavy=state?.weather===WEATHER.HEAVY_RAIN||state?.weather===WEATHER.THUNDERSTORM;
+    const events=HydrologyEngine.applyRain(map,{heavy});
+    for(const tile of map?.tiles||[])if(HydrologyEngine.waterDepth(tile)<=0&&tile.terrain==="PLAIN"){tile.terrain="MUD";events.push({type:"MUD_CREATED",x:tile.x,y:tile.y});}
     return events;
   }
   function dryTerrain(map){
@@ -93,8 +55,8 @@ window.EnvironmentEngine=(()=>{
   function removeEffect(state,x,y,type){const k=key(x,y),next=(state.effects.get(k)||[]).filter(e=>e.type!==type);if(next.length)state.effects.set(k,next);else state.effects.delete(k);}
   function destroyStoneObject(map,state,object){if(!object?.destructible)return false;object.destroyed=true;state.destroyedObjects.add(object.id);const tile=tileAt(map,object.x,object.y);if(tile&&object.breaksIntoTerrain)tile.terrain=object.breaksIntoTerrain;return true;}
   function isBurning(state,x,y){return effectAt(state,x,y).some(e=>e.type===EFFECT.BURNING||e.type===EFFECT.FIRE_TORNADO);}
-  function isConductive(map,state,x,y){return environmentAt(map,x,y)===ELEMENT.WATER;}
-  function conductiveRegion(map,state,x,y){return ConductivityEngine.connectedRegion(map,{x,y},{isConductiveTile:(tx,ty)=>isConductive(map,state,tx,ty)});}
+  function isConductive(map,state,x,y){return HydrologyEngine.isWater(tileAt(map,x,y));}
+  function conductiveRegion(map,state,x,y){return HydrologyEngine.connectedWaterBody(map,x,y);}
   function conductThunder(map,state,x,y,events=[]){
     const region=conductiveRegion(map,state,x,y);
     for(const tile of region){
