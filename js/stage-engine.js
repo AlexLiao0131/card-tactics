@@ -18,6 +18,24 @@ window.StageEngine=(()=>{
   function create(scriptId){
     return {scriptId,fired:new Set(),flags:{}};
   }
+  function scriptFor(state){
+    return STAGE_SCRIPTS[state?.scriptId]||null;
+  }
+  function pendingActions(state,predicate){
+    const script=scriptFor(state);
+    if(!script)return [];
+    const actions=[];
+    for(const item of script.events||[]){
+      if(item.once&&state?.fired?.has(item.id))continue;
+      for(const action of item.actions||[]){
+        if(!predicate||predicate(action,item))actions.push(action);
+      }
+    }
+    return actions;
+  }
+  function hasPendingSpawn(state,team){
+    return pendingActions(state,action=>action.type==="SPAWN"&&(!team||action.team===team)).length>0;
+  }
   function matches(trigger,event){
     if(!trigger||trigger.type!==event.type)return false;
     for(const [key,value] of Object.entries(trigger)){
@@ -27,7 +45,7 @@ window.StageEngine=(()=>{
     return true;
   }
   function run(state,event,context){
-    const script=STAGE_SCRIPTS[state.scriptId];
+    const script=scriptFor(state);
     if(!script)return [];
     const executed=[];
     for(const item of script.events||[]){
@@ -59,5 +77,5 @@ window.StageEngine=(()=>{
     }
     return executed;
   }
-  return {create,run};
+  return Object.freeze({create,run,pendingActions,hasPendingSpawn});
 })();
