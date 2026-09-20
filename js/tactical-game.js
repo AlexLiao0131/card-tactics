@@ -55,12 +55,15 @@
 
 
 
-  function applyForcedMovement(source,target,distance,{name="強制位移",lift=0,damage=0,damageType="PHYSICAL"}={}){
+  function applyForcedMovement(source,target,distance,{name="強制位移",lift=0,damage=0,damageType="PHYSICAL",resistAxes=null}={}){
     if(damage>0&&target?.alive)damageUnitFlat(target,damage,name);
     if(!target?.alive)return {applied:false,defeated:true,steps:[],falls:[],fallDamage:0};
-    const result=PostEngagementEngine.forcedMove({map,units,source,target,effect:{type:"KNOCKBACK",distance,lift}});
+    const result=PostEngagementEngine.forcedMove({map,units,source,target,effect:{type:"KNOCKBACK",distance,lift,force:{horizontal:distance,vertical:lift},...(resistAxes?{resistAxes}:{})}});
     if(result.applied){
-      if(result.airborne)pushLog(`${target.character.name} 被${name}捲起至 Z${result.travelZ}，位移 ${result.steps.length} 格。`,"BATTLE");
+      if(result.airborne){
+        const d=result.displacement;
+        pushLog(`${target.character.name} 被${name}捲起至 Z${result.travelZ}，位移 ${result.steps.length} 格${d?`｜重量 ${d.weightClass}｜力 ${d.baseLift}→有效升空 ${d.lift}`:""}。`,"BATTLE");
+      }
       else pushLog(`${target.character.name} 被${name}推離 ${result.steps.length} 格。`,"BATTLE");
       if(result.landing)pushLog(`${target.character.name} 落地 Z${result.landing.fromZ}→H${result.landing.toZ}${result.fallDamage?`｜墜落傷害 ${result.fallDamage}｜HP ${target.hp}`:"｜無墜落傷害"}。`,result.fallDamage?"BATTLE":"DETAIL");
       if(target.alive)enterTile(target);
@@ -76,7 +79,7 @@
       const interaction=EnvironmentEngine.pathInteraction({state:environmentState,x:tile.x,y:tile.y,kind});
       const forced=interaction.effects?.find(e=>e.type==="FORCED_MOVE");
       if(forced){
-        applyForcedMovement({x:tile.x,y:tile.y},unit,forced.distance,{name:forced.effect?.type==="FIRE_TORNADO"?"火龍捲":"龍捲風",lift:Number(forced.lift||forced.effect?.lift||0),damage:Number(forced.damage||forced.effect?.damage||0),damageType:forced.effect?.damageType||"PHYSICAL"});
+        applyForcedMovement({x:tile.x,y:tile.y},unit,forced.distance,{name:forced.effect?.type==="FIRE_TORNADO"?"火龍捲":"龍捲風",lift:Number(forced.lift||forced.effect?.lift||0),damage:Number(forced.damage||forced.effect?.damage||0),damageType:forced.effect?.damageType||"PHYSICAL",resistAxes:forced.resistAxes||forced.effect?.resistAxes});
         return {completed:false,reason:"ENVIRONMENT_FORCE"};
       }
     }

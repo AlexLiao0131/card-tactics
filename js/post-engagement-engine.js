@@ -1,3 +1,37 @@
+window.DisplacementEngine=(()=>{
+  const WEIGHT={LIGHT:0,MEDIUM:1,HEAVY:2,IMMOVABLE:99};
+  const normalizeWeight=value=>String(value||"").toUpperCase();
+  function weightClass(target){
+    const character=target?.character||target||{};
+    const explicit=normalizeWeight(character.displacement?.weightClass||character.weightClass);
+    if(Object.prototype.hasOwnProperty.call(WEIGHT,explicit))return explicit;
+    const armor=window.EquipmentDatabase?.get?.(character.armorId)||character.armor;
+    const armorType=normalizeWeight(armor?.type);
+    if(armorType==="HEAVY")return "HEAVY";
+    if(armorType==="MEDIUM")return "MEDIUM";
+    return "LIGHT";
+  }
+  function resistance(target){
+    const cls=weightClass(target),character=target?.character||target||{};
+    const bonus=Math.max(0,Number(character.displacement?.resistance||0));
+    return {weightClass:cls,value:Math.max(0,Number(WEIGHT[cls]??0)+bonus)};
+  }
+  function axis(base,resist,enabled=true,min=0){
+    base=Math.max(0,Number(base||0));
+    if(!enabled||base<=0)return base;
+    return Math.max(Math.max(0,Number(min||0)),base-resist);
+  }
+  function resolve(effect={},target){
+    const r=resistance(target),force=effect.force||{},resistAxes=effect.resistAxes||{};
+    const baseDistance=Math.max(0,Number(force.horizontal??effect.distance??0));
+    const baseLift=Math.max(0,Number(force.vertical??effect.lift??effect.launchHeight??0));
+    const distance=axis(baseDistance,r.value,resistAxes.horizontal!==false,force.minHorizontal??effect.minDistance??0);
+    const lift=axis(baseLift,r.value,resistAxes.vertical!==false,force.minVertical??effect.minLift??0);
+    return {weightClass:r.weightClass,resistance:r.value,baseDistance,baseLift,distance,lift};
+  }
+  return{WEIGHT,weightClass,resistance,resolve};
+})();
+
 window.PostEngagementEngine=(()=>{
   const FALL_THRESHOLD=2;
   const FALL_DAMAGE_PER_LEVEL=10;
@@ -37,13 +71,14 @@ window.PostEngagementEngine=(()=>{
   }
   function forcedMove({map,units,source,target,effect}){
     if(!target?.alive)return {type:effect.type,applied:false,reason:"TARGET_DEAD"};
-    const distance=Math.max(0,Number(effect.distance||0)),startGround=tileElevation(map,target.x,target.y);
-    const lift=Math.max(0,Number(effect.lift??effect.launchHeight??0));
+    const displacement=window.DisplacementEngine?.resolve?.(effect,target)||{distance:Math.max(0,Number(effect.distance||0)),lift:Math.max(0,Number(effect.lift??effect.launchHeight??0)),weightClass:"LIGHT",resistance:0,baseDistance:Number(effect.distance||0),baseLift:Number(effect.lift??effect.launchHeight??0)};
+    const distance=displacement.distance,startGround=tileElevation(map,target.x,target.y);
+    const lift=displacement.lift;
     const startZ=groundZ(map,target),travelZ=startZ+lift,airborne=lift>0||startZ>startGround;
     target.z=travelZ;
     let dir=direction(source,target,effect.type);
     if(!dir.dx&&!dir.dy){const fallback=fallbackDirection(map,units,target,distance,{z:travelZ,airborne});dir={dx:fallback[0],dy:fallback[1]};}
-    if(!dir.dx&&!dir.dy){const landing=resolveLanding({map,target,fromZ:travelZ});return {type:effect.type,applied:lift>0,reason:lift>0?null:"BLOCKED",start:{x:target.x,y:target.y,z:startZ},end:{x:target.x,y:target.y,z:target.z},steps:[],airborne,lift,landing,falls:landing.damaging?[{from:landing.fromZ,to:landing.toZ,drop:landing.drop}]:[],fallDamage:landing.damage,defeated:!target.alive};}
+    if(!dir.dx&&!dir.dy){const landing=resolveLanding({map,target,fromZ:travelZ});return {type:effect.type,applied:lift>0,reason:lift>0?null:"BLOCKED",start:{x:target.x,y:target.y,z:startZ},end:{x:target.x,y:target.y,z:target.z},steps:[],airborne,lift,displacement,landing,falls:landing.damaging?[{from:landing.fromZ,to:landing.toZ,drop:landing.drop}]:[],fallDamage:landing.damage,defeated:!target.alive};}
     const start={x:target.x,y:target.y,z:startZ},steps=[];
     for(let i=0;i<distance;i++){
       const from=TacticalEngine.tile(map,target.x,target.y),nx=target.x+dir.dx,ny=target.y+dir.dy,to=TacticalEngine.tile(map,nx,ny);
@@ -54,7 +89,7 @@ window.PostEngagementEngine=(()=>{
     }
     const landing=resolveLanding({map,target,fromZ:travelZ});
     const falls=landing.damaging?[{from:landing.fromZ,to:landing.toZ,drop:landing.drop}]:[];
-    return {type:effect.type,applied:steps.length>0||lift>0,start,end:{x:target.x,y:target.y,z:target.z},steps,airborne,lift,travelZ,landing,falls,fallDamage:landing.damage,defeated:!target.alive};
+    return {type:effect.type,applied:steps.length>0||lift>0,start,end:{x:target.x,y:target.y,z:target.z},steps,airborne,lift,travelZ,displacement,landing,falls,fallDamage:landing.damage,defeated:!target.alive};
   }
   function process({map,units,queue=[]},hooks={}){
     const results=[];
