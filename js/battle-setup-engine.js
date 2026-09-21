@@ -1,9 +1,32 @@
 window.BattleSetupEngine=(()=>{
   function create({stageId,battleSetup,TEAM}){
     const stage=StageDatabase.get(stageId);if(!stage)throw new Error(`Unknown stage: ${stageId}`);
-    const map=MapDatabase.createMap(stage.mapId);if(window.HydrologyEngine)HydrologyEngine.initializeMap(map);
+
+    let map;
+    if(stage.mode==="VERSUS"&&stage.battlefield?.type==="PROCEDURAL"){
+      if(!window.MapGenerator?.generateVersus)throw new Error("MapGenerator.generateVersus is not loaded.");
+      const generated=MapGenerator.generateVersus({
+        size:battleSetup?.mapSize||stage.battlefield.defaultSize||"MEDIUM",
+        seed:battleSetup?.seed,
+        coreRules:stage.coreRules||{}
+      });
+      map=generated.map;
+      stage.cores=generated.cores;
+      stage.deploymentPoints=generated.deploymentPoints;
+      stage.generatedBattlefield=generated.meta;
+      if(battleSetup&&!battleSetup.seed)battleSetup.seed=generated.meta.seed;
+      if(battleSetup&&!battleSetup.mapSize)battleSetup.mapSize=generated.meta.size;
+    }else{
+      map=MapDatabase.createMap(stage.mapId);
+    }
+
+    if(window.HydrologyEngine)HydrologyEngine.initializeMap(map);
     const stageState=StageEngine.create(stage.scriptId,{victory:stage.victory,defeat:stage.defeat});
-    const cores=(stage.cores||[]).map(core=>({...core,hp:Number(core.hp??core.maxHp??0),maxHp:Number(core.maxHp??core.hp??0)}));
+    const cores=(stage.cores||[]).map(core=>({
+      ...core,
+      hp:Number(core.hp??core.maxHp??0),maxHp:Number(core.maxHp??core.hp??0),
+      shield:Number(core.shield??core.maxShield??0),maxShield:Number(core.maxShield??core.shield??0)
+    }));
     const environmentState=window.EnvironmentEngine?EnvironmentEngine.create(stage.environment||{}):null,units=[];
     const createUnit=(id,team,characterId,x,y)=>UnitRuntimeEngine.create({id,team,characterId,x,y,map});
     const forcedHeroIds=new Set((stage.playerSpawns||[]).filter(s=>s.source==="STAGE").map(s=>s.characterId));
@@ -15,10 +38,7 @@ window.BattleSetupEngine=(()=>{
     (stage.playerSpawns||[]).forEach((u,i)=>units.push(createUnit(`p${i}`,TEAM.PLAYER,u.characterId,u.x,u.y)));
     (stage.enemySpawns||[]).forEach((u,i)=>units.push(createUnit(`e${i}`,TEAM.ENEMY,u.characterId,u.x,u.y)));
     const encounterState=window.EncounterEngine?.create?.(stage.encounters||[],{map,units,createUnit})||null;
-    if(encounterState){
-      stageState.encounterState=encounterState;
-      EncounterEngine.spawnInitial(encounterState);
-    }
+    if(encounterState){stageState.encounterState=encounterState;EncounterEngine.spawnInitial(encounterState);}
     return {stage,map,stageState,cores,environmentState,units,cardState,enemyCardState,encounterState,unitSerial:0};
   }
   return Object.freeze({create});

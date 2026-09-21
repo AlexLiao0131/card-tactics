@@ -65,6 +65,11 @@
       return `<div class="shop-result-card ${card.unitType==="HERO"?"hero":""}">${cardLabel(card)}<em>×${count}</em></div>`;
     }).join("");
   }
+  function updateVersusMapMeta(){
+    const select=$("versusMapSize"),meta=$("versusMapMeta");if(!select||!meta||!window.MapGenerator)return;
+    const p=MapGenerator.preset(select.value);meta.textContent=`${p.label}｜${p.width} × ${p.height}｜高低差、湖泊、森林與據點會依 Seed 程序生成`;
+  }
+
   $("pressStart").onclick=()=>{AudioManager.playBgm("assets/audio/title-theme.mp3");show("menuScreen");};
   $("autoDeck").onclick=autoDeck;
   $("applyDeck").onclick=applyDeck;
@@ -72,8 +77,9 @@
   $("loadDeck").onclick=loadDeck;
   $("menuCampaign").onclick=()=>show("campaignScreen");
   $("campaignPrototype").onclick=()=>openDeckBuilder({from:"campaignScreen",deploy:true});
-  $("menuVersus").onclick=()=>show("versusScreen");
+  $("menuVersus").onclick=()=>{updateVersusMapMeta();show("versusScreen");};
   $("versusAi").onclick=()=>openDeckBuilder({from:"versusScreen",deploy:true});
+  $("versusMapSize")?.addEventListener("change",updateVersusMapMeta);
   $("menuCards").onclick=()=>openDeckBuilder({from:"menuScreen",deploy:false});
   $("menuShop").onclick=()=>{renderShop();show("shopScreen");};
   $("menuSave").onclick=()=>show("saveScreen");
@@ -82,7 +88,12 @@
   $("deckBack").onclick=()=>show(deckReturn);
   $("deployDeck").onclick=()=>{
     DeckEngine.setActive(deck);
-    window.CardTacticsBattleSetup={stageId:deckReturn==="versusScreen"?"versus_core_battle":"prototype_battle",deck:[...deck]};
+    const versus=deckReturn==="versusScreen";
+    window.CardTacticsBattleSetup={
+      stageId:versus?"versus_core_battle":"prototype_battle",
+      deck:[...deck],
+      ...(versus?{mapSize:$("versusMapSize")?.value||"MEDIUM",seed:window.MapGenerator?.randomSeed?.()}: {})
+    };
     window.CardTacticsRuntime?.resetBattle?.();show("battleScreen");
   };
   $("battleBack").onclick=()=>show("menuScreen");
@@ -90,5 +101,6 @@
   $("bgmVolume").oninput=e=>AudioManager.setBgmVolume(e.target.value/100);
   $("seToggle").onchange=e=>AudioManager.setSeEnabled(e.target.checked);
   $("seVolume").oninput=e=>AudioManager.setSeVolume(e.target.value/100);
+  updateVersusMapMeta();
   show("titleScreen");
 })();
