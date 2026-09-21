@@ -14,8 +14,11 @@ window.BattleSetupEngine=(()=>{
     DeckEngine.shuffle(cardState.zones);DeckEngine.shuffle(enemyCardState.zones);DeckEngine.draw(enemyCardState.zones,Number(stage.enemyCardRules?.handSize||stage.cardRules?.handSize||5));
     (stage.playerSpawns||[]).forEach((u,i)=>units.push(createUnit(`p${i}`,TEAM.PLAYER,u.characterId,u.x,u.y)));
     (stage.enemySpawns||[]).forEach((u,i)=>units.push(createUnit(`e${i}`,TEAM.ENEMY,u.characterId,u.x,u.y)));
-    const encounterState=window.EncounterEngine?.create?.(stage.encounters||[],{map})||null;
-    if(encounterState)EncounterEngine.spawnInitial(encounterState,{map,units,createUnit});
+    const encounterState=window.EncounterEngine?.create?.(stage.encounters||[],{map,units,createUnit})||null;
+    if(encounterState){
+      stageState.encounterState=encounterState;
+      EncounterEngine.spawnInitial(encounterState);
+    }
     return {stage,map,stageState,cores,environmentState,units,cardState,enemyCardState,encounterState,unitSerial:0};
   }
   return Object.freeze({create});
