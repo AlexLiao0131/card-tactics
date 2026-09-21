@@ -17,7 +17,7 @@ window.VISUALS={
       MUD:{fill:0x6b573f},
       FOREST:{fill:0x2d6745,marker:{primitive:"TEXT",text:"🌲",fontSize:25,lift:18}},
       HIGH_GROUND:{fill:0x817243},
-      WATER:{fill:0x287292,marker:{primitive:"TEXT",text:"≈",fontSize:23,color:"#b9ecff"}},
+      WATER:{fill:0x2f91c2,alpha:.52,frontAlpha:.20,bedAlpha:.94,marker:{primitive:"TEXT",text:"≈",fontSize:23,color:"#c8f3ff"}},
       WALL:{fill:0x606873,marker:{primitive:"ROCK"}}
     },
     objects:{
