@@ -15,6 +15,29 @@ const WEATHER_NAME=Object.freeze({CLEAR:"晴朗",FOG:"迷霧",RAIN:"雨",HEAVY_R
 function create(ctx){
   if(!ctx?.state)throw new Error("BattlePresentationController requires state().");
 
+  function teamPresentation(team){
+    if(team===ctx.TEAM?.PLAYER||team==="P"||team==="PLAYER")return "PLAYER";
+    if(team===ctx.TEAM?.ENEMY||team==="E"||team==="ENEMY")return "ENEMY";
+    if(team===ctx.TEAM?.NEUTRAL||team==="N"||team==="NEUTRAL")return "NEUTRAL";
+    return String(team||"NEUTRAL");
+  }
+
+  function tileHydrology(tile){
+    const depth=Number(window.HydrologyEngine?.waterDepth?.(tile)??tile?.waterDepth??0);
+    const surface=window.HydrologyEngine?.waterSurfaceZ?.(tile);
+    return {
+      waterDepth:Math.max(0,Number.isFinite(depth)?depth:0),
+      waterSurfaceZ:surface==null?null:Number(surface),
+      ...(tile?.dryTerrain?{dryTerrain:tile.dryTerrain}:{})
+    };
+  }
+
+  function unitRenderZ(unit,tile){
+    const physical=Number(unit?.z??TacticalEngine.elevation(tile)??0);
+    const surface=window.HydrologyEngine?.waterSurfaceZ?.(tile);
+    return surface==null?physical:Math.max(physical,Number(surface));
+  }
+
   function tileInteractions(tile,effects){
     const s=ctx.state(),environment=EnvironmentEngine.environmentAt(s.map,tile.x,tile.y),notes=[];
     if(environment==="GRASS"){
@@ -75,11 +98,13 @@ function create(ctx){
     if(!unit?.alive)return null;
     const tile=TacticalEngine.tile(s.map,unit.x,unit.y),maxHp=Number(unit.character.combat.hp||unit.hp||1),combat=unit.character.combat||{};
     const baseHit=Math.max(BATTLE_RULES.combatParams.minHit,Math.min(BATTLE_RULES.combatParams.maxHit,BATTLE_RULES.combatParams.baseHit+BattleEngine.accuracy(unit.character,{})));
-    const actionState=unit.team===ctx.TEAM.ENEMY?"敵方單位":unit.acted?(unit.waited?"已待機":"已完成主動行動 / 可支援"):unit.moved?"已移動 / 可攻擊":"可移動 / 可行動";
+    const team=teamPresentation(unit.team);
+    const actionState=team==="ENEMY"?"敵方單位":team==="NEUTRAL"?"中立／野怪":unit.acted?(unit.waited?"已待機":"已完成主動行動 / 可支援"):unit.moved?"已移動 / 可攻擊":"可移動 / 可行動";
     const preview=s.selected&&s.selected!==unit&&s.selectedSkill&&s.mode==="attack"?combatPreview(s.selected,unit,s.selectedSkill):null;
     return {
-      id:unit.id,team:unit.team,name:unit.character.name,visualId:unit.character.visualId||null,
-      hp:unit.hp,maxHp,move:Number(combat.move||0),x:unit.x,y:unit.y,z:Number(unit.z??(tile?.elevation||0)),
+      id:unit.id,team,name:unit.character.name,visualId:unit.character.visualId||null,
+      hp:unit.hp,maxHp,move:Number(combat.move||0),x:unit.x,y:unit.y,
+      z:Number(unit.z??(tile?.elevation||0)),renderZ:unitRenderZ(unit,tile),
       terrain:tile?TERRAINS[tile.terrain]?.name||tile.terrain:"",elevation:Number(tile?.elevation||0),actionState,
       stats:{atk:Number(combat.atk||0),def:Number(combat.def||0),matk:Number(combat.matk||0),mdef:Number(combat.mdef||0),
         hit:baseHit,eva:BattleEngine.evasion(unit.character),crit:BattleEngine.critChance(unit.character,{}),spd:BattleEngine.actionSpeed(unit.character,{})},
@@ -99,20 +124,29 @@ function create(ctx){
       const effects=s.environmentState?EnvironmentEngine.effectAt(s.environmentState,tile.x,tile.y):[];
       const deployable=!!(s.pendingCard&&s.phase===ctx.PHASE.CARD&&CardDatabase.isCharacter(s.pendingCard)&&DeploymentEngine.canDeploy({stage:s.stage,map:s.map,units:s.units,owner:"PLAYER",x:tile.x,y:tile.y}));
       const attackable=!!((s.pendingCard&&s.phase===ctx.PHASE.CARD&&CardDatabase.isSpell(s.pendingCard))||(unit&&targets.includes(unit))||(core&&targets.some(target=>target.kind==="CORE"&&target.core===core))||mapTargets.includes(tile));
-      return {x:tile.x,y:tile.y,terrain:tile.terrain,elevation:Number(tile.elevation||0),reachable:reachable.has(tile.x+","+tile.y),attackable,deployable,
+      return {
+        x:tile.x,y:tile.y,terrain:tile.terrain,elevation:Number(tile.elevation||0),...tileHydrology(tile),
+        reachable:reachable.has(tile.x+","+tile.y),attackable,deployable,
         inspected:!!(s.inspectedTile&&s.inspectedTile.x===tile.x&&s.inspectedTile.y===tile.y),effects:effects.map(effect=>effect.type),
         deploymentAreaOwner:points.find(point=>(point.area||[]).some(t=>t.x===tile.x&&t.y===tile.y))?.owner||null,
         capturePoint:capturePoint?{id:capturePoint.id,name:capturePoint.name,owner:capturePoint.owner}:null,
-        core:core?{id:core.id,owner:core.owner,name:core.name,hp:core.hp,maxHp:core.maxHp}:null};
+        core:core?{id:core.id,owner:core.owner,name:core.name,hp:core.hp,maxHp:core.maxHp}:null
+      };
     });
     return {revision:s.renderRevision,phase:s.phase,round:s.round,mode:s.mode,
       map:{id:s.map.id,width:s.map.width,height:s.map.height,tiles,objects:(s.map.objects||[]).map(o=>({...o}))},
       cores:s.cores.map(core=>({...core})),
       presentation:{deploymentPoints:points.map(point=>({id:point.id,name:point.name,owner:point.owner,capturable:point.capturable!==false,area:(point.area||[]).map(t=>({...t})),captureTiles:(point.captureTiles||[]).map(t=>({...t}))})),
         enemyHandCount:s.enemyCardState?.zones?.hand?.length||0,enemyDeckCount:s.enemyCardState?.zones?.deck?.length||0},
-      units:s.units.filter(u=>u.alive).map(u=>({id:u.id,x:u.x,y:u.y,z:Number(u.z??(TacticalEngine.elevation(TacticalEngine.tile(s.map,u.x,u.y))||0)),
-        team:u.team==="P"?"PLAYER":"ENEMY",name:u.character.name,visualId:u.character.visualId||null,hp:u.hp,maxHp:Number(u.character.combat.hp||u.hp||1),
-        selected:u===s.selected,finished:!!u.acted,moved:!!u.moved,acted:!!u.acted}))};
+      units:s.units.filter(u=>u.alive).map(u=>{
+        const tile=TacticalEngine.tile(s.map,u.x,u.y);
+        return {
+          id:u.id,x:u.x,y:u.y,z:Number(u.z??(TacticalEngine.elevation(tile)||0)),renderZ:unitRenderZ(u,tile),
+          team:teamPresentation(u.team),faction:u.faction||null,monsterId:u.monsterId||null,
+          name:u.character.name,visualId:u.character.visualId||null,hp:u.hp,maxHp:Number(u.character.combat.hp||u.hp||1),
+          selected:u===s.selected,finished:!!u.acted,moved:!!u.moved,acted:!!u.acted
+        };
+      })};
   }
 
   return Object.freeze({battleSnapshot,unitPresentation,combatPreview,tileAnnotation});
