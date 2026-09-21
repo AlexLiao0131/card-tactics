@@ -1,5 +1,5 @@
 window.HydrologyEngine=(()=>{
-  const WATERLINE=0,RAIN_FILL_PER_EVENT=0.25,HEAVY_RAIN_FILL_PER_EVENT=0.5,NATURAL_WATER_DEPTH=1;
+  const WATERLINE=0,RAIN_FILL_PER_EVENT=0.06,HEAVY_RAIN_FILL_PER_EVENT=0.12,STORM_RAIN_FILL_PER_EVENT=0.16,NATURAL_WATER_DEPTH=1;
   const SOIL_SATURATION_CAPACITY=1,DRYING_PER_CLEAR_TURN=1;
   const EPSILON=0.0001,FLOW_EPSILON=0.0005,MAX_FLOW_ITERATIONS=256;
   const DIRS=[[1,0],[-1,0],[0,1],[0,-1]],FLOW_DIRS=[[1,0],[0,1]],key=(x,y)=>`${x},${y}`;
@@ -253,26 +253,27 @@ window.HydrologyEngine=(()=>{
     return events;
   }
 
-  function applyRain(map,{heavy=false}={}){
-    const events=[],amount=heavy?HEAVY_RAIN_FILL_PER_EVENT:RAIN_FILL_PER_EVENT;
+  function applyRain(map,{heavy=false,amount=null,source=null}={}){
+    const resolvedAmount=Math.max(0,Number(amount??(heavy?HEAVY_RAIN_FILL_PER_EVENT:RAIN_FILL_PER_EVENT))),events=[];
+    amount=resolvedAmount;const rainSource=source|| (heavy?"HEAVY_RAIN":"RAIN");
     for(const tile of map?.tiles||[]){
       if(!canHoldWater(tile))continue;
       if(isWater(tile)){
         const before=waterDepth(tile);
         tile.waterDepth=before+amount;
-        events.push({type:"WATER_ACCUMULATED",x:tile.x,y:tile.y,elevation:elevation(tile),fromDepth:before,waterDepth:tile.waterDepth,waterSurfaceZ:elevation(tile)+tile.waterDepth,source:heavy?"HEAVY_RAIN":"RAIN"});
+        events.push({type:"WATER_ACCUMULATED",x:tile.x,y:tile.y,elevation:elevation(tile),fromDepth:before,waterDepth:tile.waterDepth,waterSurfaceZ:elevation(tile)+tile.waterDepth,source:rainSource});
         continue;
       }
       if(tile.terrain==="PLAIN"||tile.terrain==="MUD"){
-        const excess=saturateSoil(tile,amount,events,heavy?"HEAVY_RAIN":"RAIN");
+        const excess=saturateSoil(tile,amount,events,rainSource);
         if(excess>EPSILON){
           const before=waterDepth(tile);
           tile.waterDepth=before+excess;
-          events.push({type:"SURFACE_RUNOFF",x:tile.x,y:tile.y,amount:excess,source:heavy?"HEAVY_RAIN":"RAIN"});
+          events.push({type:"SURFACE_RUNOFF",x:tile.x,y:tile.y,amount:excess,source:rainSource});
         }
       }
     }
-    redistribute(map,{source:heavy?"HEAVY_RAIN":"RAIN",events});
+    redistribute(map,{source:rainSource,events});
     return events;
   }
 
@@ -293,7 +294,7 @@ window.HydrologyEngine=(()=>{
   }
 
   return Object.freeze({
-    WATERLINE,RAIN_FILL_PER_EVENT,HEAVY_RAIN_FILL_PER_EVENT,NATURAL_WATER_DEPTH,
+    WATERLINE,RAIN_FILL_PER_EVENT,HEAVY_RAIN_FILL_PER_EVENT,STORM_RAIN_FILL_PER_EVENT,NATURAL_WATER_DEPTH,
     SOIL_SATURATION_CAPACITY,DRYING_PER_CLEAR_TURN,EPSILON,FLOW_EPSILON,MAX_FLOW_ITERATIONS,
     initializeMap,tileAt,elevation,waterDepth,waterSurfaceZ,isWater,connectedWaterBody,fillCapacity,
     soilMoisture,surfaceWaterVolume,soilWaterVolume,totalWater,

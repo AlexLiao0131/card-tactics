@@ -4,16 +4,18 @@ window.EnvironmentEngine=(()=>{
   const EFFECT={BURNING:"BURNING",BOILING:"BOILING",STEAM:"STEAM",FRAGMENTS:"FRAGMENTS",TORNADO:"TORNADO",FIRE_TORNADO:"FIRE_TORNADO",ELECTRIFIED:"ELECTRIFIED",SNOW:"SNOW",ICE:"ICE",CURRENT:"CURRENT"};
   const WEATHER={CLEAR:"CLEAR",FOG:"FOG",RAIN:"RAIN",HEAVY_RAIN:"HEAVY_RAIN",THUNDERSTORM:"THUNDERSTORM",SNOW:"SNOW",BLIZZARD:"BLIZZARD"};
   const WEATHER_RULES={THUNDERSTORM:{lightningChance:0.35,lightningDamage:60,metalWeight:2,waterWeight:2,treeWeight:2}};
+  const WEATHER_TURNS=Object.freeze({FOG:2,RAIN:3,HEAVY_RAIN:2,THUNDERSTORM:2,SNOW:3,BLIZZARD:2});
+  const DIRS=[[1,0],[-1,0],[0,1],[0,-1]];
   const METAL_EQUIPMENT_IDS=new Set(["black_sword","imperial_sword","standard_sword","blessed_sword","imperial_spear","imperial_hammer","imperial_medium_armor","imperial_heavy_shield_armor","water_medium_armor","imperial_heavy_armor","imperial_heavy_plate","imperial_large_shield"]);
   const HAZARD={BURNING_DAMAGE:20,BOILING_DAMAGE:30,FIRE_TORNADO_DAMAGE:45,ELECTRIC_DAMAGE:35};
-  const HYDROLOGY=Object.freeze({WATERLINE:HydrologyEngine.WATERLINE,RAIN_FILL_PER_EVENT:HydrologyEngine.RAIN_FILL_PER_EVENT,HEAVY_RAIN_FILL_PER_EVENT:HydrologyEngine.HEAVY_RAIN_FILL_PER_EVENT});
+  const HYDROLOGY=Object.freeze({WATERLINE:HydrologyEngine.WATERLINE,RAIN_FILL_PER_EVENT:HydrologyEngine.RAIN_FILL_PER_EVENT,HEAVY_RAIN_FILL_PER_EVENT:HydrologyEngine.HEAVY_RAIN_FILL_PER_EVENT,STORM_RAIN_FILL_PER_EVENT:HydrologyEngine.STORM_RAIN_FILL_PER_EVENT});
   function key(x,y){return `${x},${y}`;}
   function tileAt(map,x,y){return map?.tiles?.find(t=>t.x===x&&t.y===y)||null;}
   function objectAt(map,x,y){return (map?.objects||[]).find(o=>!o.destroyed&&o.x===x&&o.y===y)||null;}
   const elevation=tile=>HydrologyEngine.elevation(tile);
   const waterDepth=tile=>HydrologyEngine.waterDepth(tile);
   function environmentAt(map,x,y){const object=objectAt(map,x,y);if(object?.environment)return object.environment;const tile=tileAt(map,x,y);return TERRAINS[tile?.terrain]?.environment||ELEMENT.NONE;}
-  function create({timeOfDay="DAY",weather="CLEAR"}={}){return{timeOfDay,weather:weather||WEATHER.CLEAR,effects:new Map(),destroyedObjects:new Set(),climate:{turn:0}};}
+  function create({timeOfDay="DAY",weather="CLEAR",weatherTurns=null}={}){return{timeOfDay,weather:weather||WEATHER.CLEAR,weatherTurnsRemaining:weatherTurns==null?null:Math.max(0,Number(weatherTurns||0)),effects:new Map(),destroyedObjects:new Set(),climate:{turn:0}};}
   function setTimeOfDay(state,timeOfDay){state.timeOfDay=timeOfDay==="NIGHT"?"NIGHT":"DAY";}
   const fillCapacity=tile=>HydrologyEngine.fillCapacity(tile);
   const addWater=(tile,amount,events=[])=>HydrologyEngine.addWater(tile,amount,events);
@@ -22,24 +24,45 @@ window.EnvironmentEngine=(()=>{
 
   function isRain(state){return state?.weather===WEATHER.RAIN||state?.weather===WEATHER.HEAVY_RAIN||state?.weather===WEATHER.THUNDERSTORM;}
   function isSnow(state){return state?.weather===WEATHER.SNOW||state?.weather===WEATHER.BLIZZARD;}
-  function applyRainToTerrain(map,state){const heavy=state?.weather===WEATHER.HEAVY_RAIN||state?.weather===WEATHER.THUNDERSTORM;return HydrologyEngine.applyRain(map,{heavy});}
-  function advanceHydrology(map,state){
-    if(!map||!state)return[];const events=[];
+  function rainAmount(weather){if(weather===WEATHER.THUNDERSTORM)return Number(HydrologyEngine.STORM_RAIN_FILL_PER_EVENT??0.16);if(weather===WEATHER.HEAVY_RAIN)return Number(HydrologyEngine.HEAVY_RAIN_FILL_PER_EVENT??0.12);return Number(HydrologyEngine.RAIN_FILL_PER_EVENT??0.06);}
+  function applyRainToTerrain(map,state){const weather=state?.weather||WEATHER.RAIN,heavy=weather!==WEATHER.RAIN;return HydrologyEngine.applyRain(map,{heavy,amount:rainAmount(weather),source:weather});}
+  function weatherPulse(map,state,events=[]){
     if(isRain(state))events.push(...applyRainToTerrain(map,state));
     else if(!isSnow(state))events.push(...HydrologyEngine.drySoil(map,{source:"CLEAR_WEATHER"}));
     if(window.ClimateEngine)events.push(...ClimateEngine.advance(map,state));
     return events;
   }
-  function setWeather(state,weather,map=null){
-    if(!state)return[];state.weather=WEATHER[weather]?weather:WEATHER.CLEAR;const events=[];
+  function flammableAt(map,x,y){const tile=tileAt(map,x,y);if(!tile||HydrologyEngine.isWater(tile))return false;const object=objectAt(map,x,y);if(object&&(object.flammable===true||object.environment===ELEMENT.GRASS))return true;return TERRAINS[tile.terrain]?.environment===ELEMENT.GRASS;}
+  function spreadFire(map,state){
+    if(!map||!state||isRain(state)||isSnow(state))return[];
+    const pending=new Map();
+    for(const [k,list] of state.effects.entries()){
+      if(!list.some(effect=>effect.type===EFFECT.BURNING||effect.type===EFFECT.FIRE_TORNADO))continue;
+      const [x,y]=k.split(",").map(Number);
+      for(const [dx,dy] of DIRS){const nx=x+dx,ny=y+dy,nk=key(nx,ny);if(pending.has(nk)||isBurning(state,nx,ny)||!flammableAt(map,nx,ny))continue;pending.set(nk,{x:nx,y:ny});}
+    }
+    const events=[];
+    for(const {x,y} of pending.values()){addEffect(state,x,y,{type:EFFECT.BURNING,duration:3,lightRadius:2,damage:HAZARD.BURNING_DAMAGE,damageType:"FIRE",fireIntensity:"NORMAL"});events.push({type:"IGNITE",x,y,effect:EFFECT.BURNING,source:"FIRE_SPREAD"});}
+    return events;
+  }
+  function advanceHydrology(map,state){
+    if(!map||!state)return[];const events=[];
+    if(state.weather!==WEATHER.CLEAR&&state.weatherTurnsRemaining===0){const ended=state.weather;state.weather=WEATHER.CLEAR;state.weatherTurnsRemaining=null;events.push({type:"WEATHER_ENDED",weather:ended});}
+    weatherPulse(map,state,events);
+    if(state.weather!==WEATHER.CLEAR&&state.weatherTurnsRemaining!=null)state.weatherTurnsRemaining=Math.max(0,Number(state.weatherTurnsRemaining||0)-1);
+    events.push(...spreadFire(map,state));
+    return events;
+  }
+  function setWeather(state,weather,map=null,{duration=null,applyPulse=true}={}){
+    if(!state)return[];const resolved=WEATHER[weather]?weather:WEATHER.CLEAR;state.weather=resolved;state.weatherTurnsRemaining=resolved===WEATHER.CLEAR?null:Math.max(1,Number(duration??WEATHER_TURNS[resolved]??1));const events=[];
     if(isRain(state)||isSnow(state)){
       for(const [k,list] of [...state.effects.entries()]){
         if(!list.some(e=>e.type===EFFECT.BURNING))continue;
         const [x,y]=k.split(",").map(Number);removeEffect(state,x,y,EFFECT.BURNING);events.push({type:isRain(state)?"RAIN_EXTINGUISHED_FIRE":"SNOW_EXTINGUISHED_FIRE",x,y});
       }
     }
-    if(isRain(state))events.push(...applyRainToTerrain(map,state));
-    if(window.ClimateEngine&&map)events.push(...ClimateEngine.advance(map,state));
+    if(map&&applyPulse){weatherPulse(map,state,events);state.weatherTurnsRemaining=Math.max(0,Number(state.weatherTurnsRemaining||0)-1);}
+    events.push({type:"WEATHER_SET",weather:resolved,duration:resolved===WEATHER.CLEAR?0:Number(duration??WEATHER_TURNS[resolved]??1),remaining:Number(state.weatherTurnsRemaining??0)});
     return events;
   }
 
@@ -96,5 +119,5 @@ window.EnvironmentEngine=(()=>{
   function visionModifier(state,x,y){const effects=effectAt(state,x,y);if(effects.some(e=>e.type===EFFECT.STEAM))return{blocked:true,reason:"STEAM"};if(state?.weather===WEATHER.BLIZZARD)return{blocked:false,dark:true,reason:"BLIZZARD"};if(state?.weather===WEATHER.FOG)return{blocked:false,dark:true,reason:"FOG"};if(state.timeOfDay==="NIGHT"&&!isLit(state,x,y))return{blocked:false,dark:true,reason:"NIGHT"};return{blocked:false,dark:false,reason:null};}
   function visionRange(state){if(state?.weather===WEATHER.BLIZZARD)return 3;if(state?.weather===WEATHER.FOG)return 4;return Infinity;}
 
-  return{ELEMENT,FORCE,EFFECT,HAZARD,WEATHER,WEATHER_RULES,HYDROLOGY,create,setTimeOfDay,setWeather,isRain,isSnow,advanceHydrology,lightningRisk,rollWeatherEvent,environmentAt,effectAt,isBurning,isBoiling,isConductive,conductiveRegion,conductThunder,elevation,waterDepth,fillCapacity,addWater,removeWater,deformTerrain,apply,createTornado,pathInteraction,tick,lightSources,isLit,visionModifier,visionRange};
+  return{ELEMENT,FORCE,EFFECT,HAZARD,WEATHER,WEATHER_RULES,WEATHER_TURNS,HYDROLOGY,create,setTimeOfDay,setWeather,isRain,isSnow,advanceHydrology,spreadFire,lightningRisk,rollWeatherEvent,environmentAt,effectAt,isBurning,isBoiling,isConductive,conductiveRegion,conductThunder,elevation,waterDepth,fillCapacity,addWater,removeWater,deformTerrain,apply,createTornado,pathInteraction,tick,lightSources,isLit,visionModifier,visionRange};
 })();

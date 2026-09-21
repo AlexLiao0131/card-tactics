@@ -123,8 +123,8 @@ window.MapGenerator=(()=>{
         for(const shift of [-1,1,-2,2]){const candidate=tileAt(map,clamp(tx+shift,2,map.width-3),ty);if(candidate&&!candidate.captureZone){tile=candidate;break;}}
       }
       const routeIndex=typeof tile.routeId==="string"?Number(tile.routeId.split("_")[1]):null;
-      const isRoute=Number.isInteger(routeIndex);
-      setWater(tile,{bed:isRoute?0:-1,depth:isRoute?.35:1,river:true,ford:isRoute,flowX:0,flowY:1,flowSpeed:isRoute?.45:.62,discharge:isRoute?.8:1});
+      const isRoute=Number.isInteger(routeIndex),routeSurface=isRoute?(tile.ford?Number(tile.waterSurfaceZ??(Number(tile.elevation||0)+Number(tile.waterDepth||0))):clamp(Number(tile.elevation||0),0,1)):0;
+      setWater(tile,{bed:isRoute?routeSurface-.35:-1,depth:isRoute?.35:1,river:true,ford:isRoute,flowX:0,flowY:1,flowSpeed:isRoute?.45:.62,discharge:isRoute?.8:1});
       if(isRoute&&!routeCrossings.has(routeIndex))routeCrossings.set(routeIndex,{x:tile.x,y:tile.y});
       river.push({x:tile.x,y:tile.y});
       return tile;
@@ -148,7 +148,7 @@ window.MapGenerator=(()=>{
       let x=best.rv.x,y=best.rv.y;
       while(y!==best.rp.y){y+=Math.sign(best.rp.y-y);placeRiverTile(x,y);}
       while(x!==best.rp.x){x+=Math.sign(best.rp.x-x);const t=tileAt(map,x,y);if(!t)break;t.routeId=`route_${index}`;placeRiverTile(x,y);}
-      const ford=tileAt(map,best.rp.x,best.rp.y);if(ford){ford.routeId=`route_${index}`;setWater(ford,{bed:0,depth:.35,river:true,ford:true,flowX:0,flowY:1,flowSpeed:.45,discharge:.8});routeCrossings.set(index,{x:ford.x,y:ford.y});protectedKeys.add(key(ford.x,ford.y));}
+      const ford=tileAt(map,best.rp.x,best.rp.y);if(ford){ford.routeId=`route_${index}`;if(!ford.ford){const surface=clamp(Number(ford.elevation||0),0,1);setWater(ford,{bed:surface-.35,depth:.35,river:true,ford:true,flowX:0,flowY:1,flowSpeed:.45,discharge:.8});}ford.ford=true;ford.baseFlowSpeed=.45;ford.flowSpeed=.45;ford.baseDischarge=.8;ford.discharge=.8;routeCrossings.set(index,{x:ford.x,y:ford.y});protectedKeys.add(key(ford.x,ford.y));}
     });
     return{tiles:river,crossings:[...routeCrossings.entries()].map(([routeIndex,p])=>({routeIndex,...p}))};
   }
@@ -188,10 +188,11 @@ window.MapGenerator=(()=>{
 
   function baseArea(map,owner,b){const out=[],left=owner==="PLAYER",core=left?b.playerCore:b.enemyCore;for(let y=b.mid-b.half;y<=b.mid+b.half;y++)for(let i=0;i<b.depth;i++){const x=left?i:map.width-1-i;if(inBounds(map.width,map.height,x,y)&&!(x===core.x&&y===core.y))out.push({x,y});}return out;}
 
+  function movementHeight(tile){if(!tile)return 0;const depth=Math.max(0,Number(tile.waterDepth||0));return depth>0?Number(tile.elevation||0)+depth:Number(tile.elevation||0);}
   function normalPassable(map,objects,from,to){
     if(!to||!TERRAINS[to.terrain]?.passable)return false;
     if(objects.some(o=>!o.destroyed&&o.blocksMovement&&o.x===to.x&&o.y===to.y))return false;
-    return Math.abs(Number(to.elevation||0)-Number(from.elevation||0))<=1.0001;
+    return Math.abs(movementHeight(to)-movementHeight(from))<=1.0001;
   }
   function hasPath(map,objects,start,goal){
     const q=[start],seen=new Set([key(start.x,start.y)]);
@@ -203,7 +204,7 @@ window.MapGenerator=(()=>{
     if(!hasPath(map,objects,p,e))errors.push("CORE_TO_CORE");
     for(const point of points){const goal=point.captureTiles?.[0];if(goal&&!hasPath(map,objects,p,goal))errors.push(`PLAYER_TO_${point.id}`);if(goal&&!hasPath(map,objects,e,goal))errors.push(`ENEMY_TO_${point.id}`);}
     routes.forEach((route,i)=>{
-      for(let n=1;n<route.length;n++){const a=tileAt(map,route[n-1].x,route[n-1].y),b=tileAt(map,route[n].x,route[n].y);if(!a||!b||Math.abs(Number(a.elevation||0)-Number(b.elevation||0))>1.0001){errors.push(`ROUTE_${i}_CLIMB`);break;}}
+      for(let n=1;n<route.length;n++){const a=tileAt(map,route[n-1].x,route[n-1].y),b=tileAt(map,route[n].x,route[n].y);if(!a||!b||Math.abs(movementHeight(a)-movementHeight(b))>1.0001){errors.push(`ROUTE_${i}_CLIMB`);break;}}
       const crossing=river.crossings.find(c=>c.routeIndex===i),ford=crossing&&tileAt(map,crossing.x,crossing.y);if(!ford?.river||!ford?.ford||Number(ford.waterDepth||0)>.6)errors.push(`ROUTE_${i}_FORD`);
     });
     return{ok:errors.length===0,errors};
@@ -221,7 +222,7 @@ window.MapGenerator=(()=>{
     const capturePoints=createCapturePoints(map,routes,protectedKeys),river=createRiver(map,routes,protectedKeys,rand);
     addForests(map,cfg,rand,protectedKeys);const rocks=addRocks(map,cfg,rand,protectedKeys);
 
-    const hp=Math.max(1,Number(coreRules.hp||600)),shield=Math.max(0,Number(coreRules.shield||360)),defense=Math.max(0,Number(coreRules.defense||30));
+    const hp=Math.max(1,Number(coreRules.hp??600)),shield=Math.max(0,Number(coreRules.shield??0)),defense=Math.max(0,Number(coreRules.defense??0));
     const cores=[
       {id:"player_core",name:"我方 Core",owner:"PLAYER",x:baseInfo.playerCore.x,y:baseInfo.playerCore.y,hp,maxHp:hp,shield,maxShield:shield,defense},
       {id:"enemy_core",name:"敵方 Core",owner:"ENEMY",x:baseInfo.enemyCore.x,y:baseInfo.enemyCore.y,hp,maxHp:hp,shield,maxShield:shield,defense}
