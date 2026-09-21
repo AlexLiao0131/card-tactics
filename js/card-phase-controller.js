@@ -88,7 +88,9 @@ function create(ctx){
     }else if(effect.type==="AREA_HEAL"){
       affected.forEach(tile=>{const u=ctx.unitAt(tile.x,tile.y);if(!u?.alive||u.team!==TEAM.PLAYER)return;const before=u.hp;u.hp=Math.min(u.character.combat.hp,u.hp+Number(effect.heal||0));ctx.pushLog(`${card.name} → ${u.character.name}｜回復 ${u.hp-before} HP｜HP ${u.hp}。`,"BATTLE");});
     }else if(effect.type==="AREA_DAMAGE"){
-      affected.forEach(tile=>{const u=ctx.unitAt(tile.x,tile.y);if(u)ctx.damageUnitFlat(u,effect.damage||0,card.name);(EnvironmentEngine.apply({map:s.map,state:s.environmentState,x:tile.x,y:tile.y,forces:effect.forces||[]})||[]).forEach(ctx.logEnvironmentEvent);});
+      const environmentEvents=[];
+      affected.forEach(tile=>{const u=ctx.unitAt(tile.x,tile.y);if(u)ctx.damageUnitFlat(u,effect.damage||0,card.name);const events=EnvironmentEngine.apply({map:s.map,state:s.environmentState,x:tile.x,y:tile.y,forces:effect.forces||[]})||[];environmentEvents.push(...events);events.forEach(ctx.logEnvironmentEvent);});
+      ctx.resolveEnvironmentEvents?.(environmentEvents,{reason:`${card.name} 引發水體雷電傳導`});
       waterRecheckUnits(unitsOnTiles(s,affected),`${card.name} 改變地形／水位`);
     }else if(effect.type==="AREA_RELATION"){
       const source={id:"CARD_SOURCE",team:TEAM.PLAYER};

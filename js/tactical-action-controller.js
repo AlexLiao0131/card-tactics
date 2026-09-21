@@ -7,9 +7,9 @@
     function state(){return ctx.actionState();}
 
     function attackPlanForTarget(unit,target,skill){
-      const {map,units}=state();
+      const {map,units,environmentState}=state();
       if(!unit?.alive||unit.acted||!target?.alive||!skill)return null;
-      if(skill.approach)return TacticalEngine.canTarget(map,unit,target,skill)?{x:unit.x,y:unit.y,cost:0,path:[]}:null;
+      if(skill.approach)return TacticalEngine.canTarget(map,unit,target,skill,environmentState)?{x:unit.x,y:unit.y,cost:0,path:[]}:null;
       const positions=[{x:unit.x,y:unit.y,cost:0,path:[]}];
       if(!unit.moved){
         const reachable=TacticalEngine.reachable(map,units,unit);
@@ -22,7 +22,7 @@
       }
       const legal=positions.filter(pos=>{
         const probe={...unit,x:pos.x,y:pos.y};
-        return TacticalEngine.canTarget(map,probe,target,skill);
+        return TacticalEngine.canTarget(map,probe,target,skill,environmentState);
       });
       legal.sort((a,b)=>a.cost-b.cost||a.y-b.y||a.x-b.x);
       return legal[0]||null;
@@ -49,12 +49,12 @@
       unit.moved=true;
       if(!result.completed){commitPendingMove(unit);return false;}
       ctx.pushLog(`${unit.character.name} 自動移動至可使用「${skill.name}」的位置。`,"DETAIL");
-      return TacticalEngine.canTarget(state().map,unit,target,skill);
+      const s=state();return TacticalEngine.canTarget(s.map,unit,target,skill,s.environmentState);
     }
 
     function resolveDirectTargetAttack(unit,target,skill){
-      const {map}=state();
-      if(!unit?.alive||unit.acted||!target?.alive||!TacticalEngine.canTarget(map,unit,target,skill))return false;
+      const {map,environmentState}=state();
+      if(!unit?.alive||unit.acted||!target?.alive||!TacticalEngine.canTarget(map,unit,target,skill,environmentState))return false;
       if(target.kind!=="CORE")return false;
       ctx.consumeSkill(unit,skill);skill=ctx.effectiveSkill(unit,skill);
       const stat=skill.attackType==="MAGIC"?Number(unit.character.combat.matk||unit.character.combat.atk||0):Number(unit.character.combat.atk||0);
@@ -78,6 +78,7 @@
         if(skill.shape==="W_STEP"){
           if(ctx.unitAt(tile.x,tile.y)||TERRAINS[tile.terrain]?.passable===false)return false;
         }
+        if(skill.requiresVision!==false&&!TacticalEngine.canSee(map,attacker,tile,environmentState))return false;
         if(skill.environmentRequirement==="CONDUCTIVE"&&!EnvironmentEngine.isConductive(map,environmentState,tile.x,tile.y))return false;
         return true;
       });
@@ -104,12 +105,14 @@
       if(skill.aoeDamage){
         affected.forEach(tile=>{const occupant=ctx.unitAt(tile.x,tile.y);if(occupant)ctx.damageUnitFlat(occupant,skill.aoeDamage,skill.name);});
       }
+      const environmentEvents=[];
       affected.forEach(tile=>{
         const events=environmentState&&skill.environmentForces
           ?EnvironmentEngine.apply({map,state:environmentState,x:tile.x,y:tile.y,forces:skill.environmentForces})
           :[];
-        events.forEach(ctx.logEnvironmentEvent);
+        environmentEvents.push(...events);events.forEach(ctx.logEnvironmentEvent);
       });
+      ctx.resolveEnvironmentEvents?.(environmentEvents,{reason:`${skill.name} 引發水體雷電傳導`});
       affected.forEach(tile=>{
         if(!EnvironmentEngine.effectAt(environmentState,tile.x,tile.y).some(effect=>effect.type===EnvironmentEngine.EFFECT.BURNING))return;
         const occupant=ctx.unitAt(tile.x,tile.y);
@@ -232,7 +235,7 @@
         units,initiator:attacker,target:defender,canUseSkill:ctx.canUseSkill
       }).map(candidate=>({
         ...candidate,
-        skills:candidate.skills.filter(supportSkill=>TacticalEngine.canTarget(map,candidate.ally,defender,supportSkill))
+        skills:candidate.skills.filter(supportSkill=>TacticalEngine.canTarget(map,candidate.ally,defender,supportSkill,state().environmentState))
       })).filter(candidate=>candidate.skills.length);
       ctx.setPendingEngagement({attacker,defender,skill,candidates});
       ctx.setSupportSelection(new Map());

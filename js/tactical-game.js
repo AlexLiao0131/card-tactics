@@ -1,6 +1,6 @@
 (()=>{
   const ICON={PLAIN:"",MUD:"≋",FOREST:"🌲",HIGH_GROUND:"▲",WATER:"≈",WALL:"■"};
-  const TEAM={PLAYER:"P",ENEMY:"E"};
+  const TEAM={PLAYER:"P",ENEMY:"E",NEUTRAL:"N"};
   const PHASE={CARD:"CARD_PHASE",PLAYER:"PLAYER_TURN",ENEMY:"ENEMY_TURN",ENDED:"MATCH_ENDED"};
 
   let map,units,selected,mode,selectedSkill,selectedSkillVariant,logs,round,phase,matchResult,stage,stageState,environmentState,inspectedTile,cores=[];
@@ -94,11 +94,12 @@
   }
 
   function spawnFromScript(action){
-    const team=action.team==="PLAYER"?TEAM.PLAYER:TEAM.ENEMY;
+    const requested=String(action.team||"ENEMY").toUpperCase();
+    const team=requested==="PLAYER"?TEAM.PLAYER:requested==="NEUTRAL"?TEAM.NEUTRAL:TEAM.ENEMY;
     if(unitAt(action.x,action.y)) return null;
     const character=CHARACTERS[action.characterId];
     if(!character) return null;
-    const prefix=team===TEAM.PLAYER?"p":"e";
+    const prefix=team===TEAM.PLAYER?"p":team===TEAM.NEUTRAL?"n":"e";
     let n=0,id;
     do{id=`${prefix}s${n++}`;}while(units.some(u=>u.id===id));
     const unit=createUnit(id,team,action.characterId,action.x,action.y);
@@ -120,6 +121,8 @@
   function applyEnvironmentHazardToUnit(...args){return environmentController.applyEnvironmentHazardToUnit(...args);}
 
   function applyEnvironmentHazards(...args){return environmentController.applyEnvironmentHazards(...args);}
+
+  function resolveEnvironmentEvents(...args){return environmentController.resolveEnvironmentEvents(...args);}
 
   function enterTile(...args){return environmentController.enterTile(...args);}
 
@@ -198,7 +201,7 @@
   function createBattleContext(){
     return {
       TEAM,PHASE,
-      state:()=>({map,units,stage,round,phase,matchResult,enemyCardState}),
+      state:()=>({map,units,stage,round,phase,matchResult,enemyCardState,environmentState}),
       map:()=>map,
       living,resetActions,canUseSkill,targetType,combatTargets:combatTargetEntities,coreForOwner,
       canUnitCapture,executeCapture,enterTile,checkMatchEnd:()=>objectiveController.checkMatchEnd(),beginPlayerTurn,pushLog,render,
@@ -223,7 +226,7 @@
       setPendingCopySkill:value=>{pendingCopySkill=value;},
       unitAt,traverseUnitPath,consumeSkill,effectiveSkill,damageCore,handleDefeated,damageUnitFlat,
       canUseSkill,targetType,logBattleAction,logPostEffect,
-      logEnvironmentEvent,applyEnvironmentHazardToUnit,enterTile,clearEngagement,allFinished,
+      logEnvironmentEvent,applyEnvironmentHazardToUnit,resolveEnvironmentEvents:(...args)=>environmentController.resolveEnvironmentEvents(...args),enterTile,clearEngagement,allFinished,
       lineTiles,aoeTiles,canTraverseMoveLine,
       createEnemyCardUnit:(card,tile)=>{
         const unit=createUnit(`ec${unitSerial++}`,TEAM.ENEMY,card.characterId,tile.x,tile.y);
@@ -553,8 +556,8 @@
     const attack=pendingEngagement||pendingEnemyAttack;
     if(!attack)return null;
     const {attacker,defender,skill}=attack,odds=engagementOdds(attacker,defender,skill);
-    const player=attacker.team===TEAM.PLAYER?attacker:defender;
-    const enemy=attacker.team===TEAM.ENEMY?attacker:defender;
+    const player=attacker.team===TEAM.PLAYER?attacker:defender.team===TEAM.PLAYER?defender:null;
+    const enemy=player===attacker?defender:attacker;
     const model={
       mode,skillName:skill?.name||"交戰",
       player:engagementUnitPresentation(player,attacker,defender,odds),
@@ -580,7 +583,7 @@
 
     if(!pendingEnemyAttack)return model;
     const prep=BattleResolution.prepareSingleTargetReaction({defender,attacker,canUseSkill});
-    prep.counterSkills=prep.counterSkills.filter(s=>TacticalEngine.canTarget(map,defender,attacker,s));
+    prep.counterSkills=prep.counterSkills.filter(s=>TacticalEngine.canTarget(map,defender,attacker,s,environmentState));
 
     if(mode==="enemy-counter-select"){
       prep.counterSkills.forEach(s=>action("COUNTER_SKILL",`${s.name}｜射程 ${s.range.min}-${s.range.max}｜${resourceLabel(defender,s)}`,false,{skillId:s.id}));
@@ -595,7 +598,7 @@
       const guardian=selectedGuardian;
       if(!guardian?.alive)return {...model,invalidGuardian:true};
       const guardianMethods=BattleResolution.guardProfiles(guardian);
-      const counterSkills=BattleResolution.counterSkills({defender,attacker,canUseSkill}).filter(s=>TacticalEngine.canTarget(map,defender,attacker,s));
+      const counterSkills=BattleResolution.counterSkills({defender,attacker,canUseSkill}).filter(s=>TacticalEngine.canTarget(map,defender,attacker,s,environmentState));
       if(!selectedGuardInterception){
         guardianMethods.forEach(m=>action("GUARD_METHOD",`${m.name}｜${m.sourceName||m.method}`,false,{methodId:m.id}));
         action("BACK_GUARD_METHOD","返回");
@@ -853,7 +856,7 @@
   encounterRewards=window.EncounterRewardEngine.create({playerCardState:()=>cardState,pushLog});
   if(!window.DeathLifecycleEngine?.create)throw new Error("DeathLifecycleEngine is not loaded.");
   deathLifecycle=window.DeathLifecycleEngine.create({
-    stageEvent,cardStateFor:unit=>unit.team===TEAM.PLAYER?cardState:enemyCardState,pushLog,
+    stageEvent,cardStateFor:unit=>unit.team===TEAM.PLAYER?cardState:unit.team===TEAM.ENEMY?enemyCardState:null,pushLog,
     onDefeated:unit=>{if(unit.team===TEAM.ENEMY)encounterRewards.onDefeated(unit);},
     onFinalized:()=>objectiveController?.checkMatchEnd?.()
   });
@@ -880,7 +883,7 @@
     clearSelection,pushLog,render,emitState:()=>window.dispatchEvent(new CustomEvent("cardtactics:state")),
     unitAt,createUnit:(id,team,characterId,x,y)=>createUnit(id,team,characterId,x,y),
     nextUnitId:()=>`pc${unitSerial++}`,
-    aoeTiles,applyForcedMovement,damageUnitFlat,applyEnvironmentHazardToUnit,
+    aoeTiles,applyForcedMovement,damageUnitFlat,applyEnvironmentHazardToUnit,resolveEnvironmentEvents,
     logEnvironmentEvent,checkMatchEnd:()=>objectiveController.checkMatchEnd(),handleDefeated
   });
 

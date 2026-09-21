@@ -93,8 +93,22 @@ function create(ctx){
   let total=0;
   const water=applyWaterInteraction(unit,{trigger:waterTrigger,reason});
   total+=Number(water?.damage||0);
-  if(!unit.alive||!includeFire||!s.environmentState)return total;
-  const burning=EnvironmentEngine.effectAt(s.environmentState,unit.x,unit.y).find(effect=>effect.type===EnvironmentEngine.EFFECT.BURNING);if(!burning)return total;
+  if(!unit.alive||!s.environmentState)return total;
+  const effects=EnvironmentEngine.effectAt(s.environmentState,unit.x,unit.y);
+  const electric=effects.find(effect=>effect.type===EnvironmentEngine.EFFECT.ELECTRIFIED);
+  if(electric&&unit.alive){
+    const hitIds=Array.isArray(electric.damagedUnitIds)?electric.damagedUnitIds:(electric.damagedUnitIds=[]);
+    if(!hitIds.includes(String(unit.id))){
+      hitIds.push(String(unit.id));
+      const damage=Math.max(0,Number(electric.damage||EnvironmentEngine.HAZARD?.ELECTRIC_DAMAGE||0));
+      if(damage>0){
+        unit.hp=Math.max(0,unit.hp-damage);total+=damage;ctx.pushLog(`${unit.character.name} ${reason}｜水體雷電傳導 ${damage} 傷害｜HP ${unit.hp}。`,"BATTLE");
+        if(unit.hp<=0&&unit.alive){unit.alive=false;ctx.pushLog(`${unit.character.name} 被水體雷電傳導擊倒。`,"BATTLE");ctx.handleDefeated(unit,null,{type:"ELECTRIFIED",source:"ENVIRONMENT",origin:electric.origin||null});}
+      }
+    }
+  }
+  if(!unit.alive||!includeFire)return total;
+  const burning=effects.find(effect=>effect.type===EnvironmentEngine.EFFECT.BURNING);if(!burning)return total;
   const damage=Math.max(0,Number(burning.damage||EnvironmentEngine.HAZARD?.BURNING_DAMAGE||0));if(damage<=0)return total;
   unit.hp=Math.max(0,unit.hp-damage);total+=damage;ctx.pushLog(`${unit.character.name} ${reason}｜燃燒傷害 ${damage}｜HP ${unit.hp}。`,"BATTLE");
   if(unit.hp<=0&&unit.alive){unit.alive=false;ctx.pushLog(`${unit.character.name} 被環境火焰擊倒。`,"BATTLE");ctx.handleDefeated(unit,null,{type:"BURNING",source:"ENVIRONMENT"});}return total;
@@ -122,7 +136,33 @@ function create(ctx){
   for(const unit of (s.units||[]).filter(unit=>unit?.alive))applyEnvironmentHazardToUnit(unit,{reason,waterTrigger:"TICK"});
  }
 
- function resolveWeatherEvents(){const s=state();if(!s.environmentState)return;for(const event of EnvironmentEngine.rollWeatherEvent({map:s.map,state:s.environmentState,units:s.units})){if(event.type!=="LIGHTNING_STRIKE")continue;const unit=event.unit;if(!unit?.alive)continue;const names=(event.riskReasons||[]).map(r=>r==="METAL"?"金屬裝備":r==="WATER"?"水域":"樹木／森林");unit.hp=Math.max(0,unit.hp-Number(event.damage||0));ctx.pushLog(`⚡ 落雷擊中 ${unit.character.name}｜${event.damage} 傷害｜HP ${unit.hp}${names.length?`｜高風險：${names.join("＋")}`:""}。`,"BATTLE");if(unit.hp<=0&&unit.alive){unit.alive=false;ctx.handleDefeated(unit,null,{type:"LIGHTNING"});}}}
+ function resolveEnvironmentEvents(events,{reason="雷元素水體傳導"}={}){
+  if(!(events||[]).some(event=>event.type==="ELECTRIC_CONDUCTION"))return 0;
+  const s=state();let affected=0;
+  for(const unit of (s.units||[]).filter(unit=>unit?.alive)){
+    const damage=applyEnvironmentHazardToUnit(unit,{reason,waterTrigger:"CHECK",includeFire:false});
+    if(damage>0)affected++;
+  }
+  return affected;
+ }
+
+ function resolveWeatherEvents(){
+  const s=state();if(!s.environmentState)return;
+  for(const event of EnvironmentEngine.rollWeatherEvent({map:s.map,state:s.environmentState,units:s.units})){
+    if(event.type!=="LIGHTNING_STRIKE")continue;
+    const unit=event.unit;if(!unit?.alive)continue;
+    const names=(event.riskReasons||[]).map(r=>r==="METAL"?"金屬裝備":r==="WATER"?"水域":"樹木／森林");
+    unit.hp=Math.max(0,unit.hp-Number(event.damage||0));
+    ctx.pushLog(`⚡ 落雷擊中 ${unit.character.name}｜${event.damage} 傷害｜HP ${unit.hp}${names.length?`｜高風險：${names.join("＋")}`:""}。`,"BATTLE");
+    if(unit.hp<=0&&unit.alive){unit.alive=false;ctx.handleDefeated(unit,null,{type:"LIGHTNING"});}
+    if(EnvironmentEngine.isConductive(s.map,s.environmentState,event.x,event.y)){
+      const conduction=[];
+      EnvironmentEngine.conductThunder(s.map,s.environmentState,event.x,event.y,conduction,{damagedUnitIds:[unit.id]});
+      conduction.forEach(logEnvironmentEvent);
+      resolveEnvironmentEvents(conduction,{reason:"雷雨落雷引發水體傳導"});
+    }
+  }
+ }
 
  function logEnvironmentEvent(event){
   if(event.type==="IGNITE")ctx.pushLog(`(${event.x},${event.y}) 燃燒起來，成為火光來源。`,"SYSTEM");
@@ -136,9 +176,9 @@ function create(ctx){
   else if(event.type==="STONE_FRAGMENT")ctx.pushLog(`爆炸擊中石質物件，(${event.x},${event.y}) 產生破片${event.destroyed?"並炸開道路":""}。`,"SYSTEM");
   else if(event.type==="TORNADO_CREATED")ctx.pushLog(`(${event.x},${event.y}) 形成龍捲風場。`,"DETAIL");
   else if(event.type==="FIRE_TORNADO_CREATED")ctx.pushLog(`(${event.x},${event.y}) 的燃燒區被風捲起，形成火龍捲。`,"SYSTEM");
-  else if(event.type==="ELECTRIC_CONDUCTION")ctx.pushLog(`⚡ (${event.x},${event.y}) 發生雷元素傳導。`,"SYSTEM");
+  else if(event.type==="ELECTRIC_CONDUCTION")ctx.pushLog(`⚡ 雷元素由 (${event.x},${event.y}) 傳遍相連水體｜${event.regionSize||1} 格帶電。`,"SYSTEM");
  }
- return Object.freeze({resolveCollisionRuntime,applyForcedMovement,traverseUnitPath,applyWaterInteraction,applyEnvironmentHazardToUnit,applyEnvironmentHazards,enterTile,resolveWeatherEvents,logEnvironmentEvent});
+ return Object.freeze({resolveCollisionRuntime,applyForcedMovement,traverseUnitPath,applyWaterInteraction,applyEnvironmentHazardToUnit,applyEnvironmentHazards,resolveEnvironmentEvents,enterTile,resolveWeatherEvents,logEnvironmentEvent});
 }
 window.BattleEnvironmentController=Object.freeze({create});
 })();

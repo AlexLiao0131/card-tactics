@@ -104,8 +104,17 @@ window.TacticalEngine=(()=>{
     }
     return cells;
   }
-  function hasLineOfSight(m,u,target,s){
+  function visionBlocked(environmentState,x,y){return !!(environmentState&&window.EnvironmentEngine?.visionModifier?.(environmentState,x,y)?.blocked)}
+  function canSee(m,observer,target,environmentState=null){
+    if(!m||!observer||!target)return false;
+    if(observer.x===target.x&&observer.y===target.y)return true;
+    if(!environmentState||!window.EnvironmentEngine?.visionModifier)return true;
+    if(visionBlocked(environmentState,observer.x,observer.y)||visionBlocked(environmentState,target.x,target.y))return false;
+    return lineCells(observer,target).every(p=>!visionBlocked(environmentState,p.x,p.y));
+  }
+  function hasLineOfSight(m,u,target,s,environmentState=null){
     if(!m||!u||!target)return false;
+    if(s?.ignoreVision!==true&&!canSee(m,u,target,environmentState))return false;
     if(attackType(u,s)!=="SHOT"||s?.trajectory==="ARC")return true;
     const from=tile(m,u.x,u.y),to=tile(m,target.x,target.y);
     if(!from||!to)return false;
@@ -117,18 +126,18 @@ window.TacticalEngine=(()=>{
       return elevation(middle)<rayHeight;
     });
   }
-  function canTarget(m,u,target,s){
+  function canTarget(m,u,target,s,environmentState=null){
     if(!u?.alive||!target?.alive)return false;
     const r=range(s)||{min:0,max:0},d=D(u,target);
     if(d<r.min||d>r.max)return false;
     if(s.target==="SELF")return target.id===u.id;
     if(s.target==="ALLY"&&target.team!==u.team)return false;
     if(s.target==="ENEMY"&&target.team===u.team)return false;
-    return hasLineOfSight(m,u,target,s);
+    return hasLineOfSight(m,u,target,s,environmentState);
   }
-  function targets(m,us,u,s){
+  function targets(m,us,u,s,environmentState=null){
     if(s.target==="SELF")return[u];
-    return us.filter(v=>canTarget(m,u,v,s));
+    return us.filter(v=>canTarget(m,u,v,s,environmentState));
   }
   function resolve(m,a,d,s,opt={}){
     ensureFacing(a);ensureFacing(d);
@@ -139,5 +148,5 @@ window.TacticalEngine=(()=>{
         dc={...d.character,modifiers:{...(d.character.modifiers||{}),evasion:Number(d.character.modifiers?.evasion||0)+eva}};
     return{result:BattleEngine.calculate(ac,dc,s,opt),terrain:{acc,eva,at,dt},facing:{attacker:a.facing,defender:d.facing,arc:relativeArc(d,a)}}
   }
-  return{tile,objectAt,isBlockedByObject,elevation,elevationDelta,canTraverseElevation,canActiveMove,reachable,pathTo,range,attackType,hasLineOfSight,canTarget,targets,resolve,ensureFacing,facingToward,faceToward,relativeArc}
+  return{tile,objectAt,isBlockedByObject,elevation,elevationDelta,canTraverseElevation,canActiveMove,reachable,pathTo,range,attackType,visionBlocked,canSee,hasLineOfSight,canTarget,targets,resolve,ensureFacing,facingToward,faceToward,relativeArc}
 })();

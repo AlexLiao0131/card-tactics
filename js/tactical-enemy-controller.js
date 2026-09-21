@@ -31,7 +31,7 @@
       };
 
       const targetsForSkill=(actor,skill)=>targetEntities(actor).filter(target=>
-        TacticalEngine.canTarget(ctx.map(),actor,target,skill)
+        TacticalEngine.canTarget(ctx.map(),actor,target,skill,ctx.actionState?.().environmentState||null)
       );
 
       const chooseAttack=actor=>{
@@ -55,7 +55,7 @@
         if(actor.moved||!actor.alive)return[];
         const state=ctx.state();
         const objectives=state.units
-          .filter(unit=>unit.alive&&unit.id!==actor.id&&unit.team!==actor.team)
+          .filter(unit=>unit.alive&&unit.id!==actor.id&&unit.team!==actor.team&&TacticalEngine.canSee(state.map,actor,unit,state.environmentState||null))
           .map(unit=>({x:unit.x,y:unit.y}));
 
         if(!isNeutral(actor)&&state.stage?.ruleset==="CORE_CAPTURE"){
@@ -125,14 +125,14 @@
           return;
         }
 
-        // Only attacks from ENEMY to PLAYER need the player's reaction UI.
-        // Neutral-vs-player, neutral-vs-enemy, and enemy-vs-neutral resolve autonomously.
-        if(attack.attacker.team!==ctx.TEAM.ENEMY||attack.defender.team!==ctx.TEAM.PLAYER){
+        // Any hostile SINGLE attack against a player-controlled unit uses the same reaction pipeline.
+        // AI-vs-neutral and neutral-vs-AI remain autonomous because neither side is player-controlled.
+        if(attack.defender.team!==ctx.TEAM.PLAYER){
           resolveAutonomousAttack(attack);
           return;
         }
 
-        showStep("ATTACK",`AI 決策｜${attack.attacker.character.name} → ${attack.defender.character.name}｜${attack.skill.name}`,{unitId:attack.attacker.id});
+        showStep("ATTACK",`${actorLabel(attack.attacker)} 決策｜${attack.attacker.character.name} → ${attack.defender.character.name}｜${attack.skill.name}`,{unitId:attack.attacker.id});
         afterStep(()=>{
           ctx.setPendingEnemyAttack(attack);ctx.setMode("enemy-reaction");
           ctx.pushLog(`${attack.attacker.character.name} 對 ${attack.defender.character.name} 發動 ${attack.skill.name}。`);

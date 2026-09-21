@@ -57,12 +57,12 @@ window.EnvironmentEngine=(()=>{
   function isBurning(state,x,y){return effectAt(state,x,y).some(e=>e.type===EFFECT.BURNING||e.type===EFFECT.FIRE_TORNADO);}
   function isConductive(map,state,x,y){return HydrologyEngine.isWater(tileAt(map,x,y));}
   function conductiveRegion(map,state,x,y){return HydrologyEngine.connectedWaterBody(map,x,y);}
-  function conductThunder(map,state,x,y,events=[]){
-    const region=conductiveRegion(map,state,x,y);
+  function conductThunder(map,state,x,y,events=[],{damagedUnitIds=[]}={}){
+    const region=conductiveRegion(map,state,x,y),hitRegistry=[...new Set(damagedUnitIds.map(String))];
     for(const tile of region){
-      addEffect(state,tile.x,tile.y,{type:EFFECT.ELECTRIFIED,duration:1,damage:HAZARD.ELECTRIC_DAMAGE,damageType:"THUNDER"});
-      events.push({type:"ELECTRIC_CONDUCTION",x:tile.x,y:tile.y,effect:EFFECT.ELECTRIFIED,origin:{x,y}});
+      addEffect(state,tile.x,tile.y,{type:EFFECT.ELECTRIFIED,duration:1,damage:HAZARD.ELECTRIC_DAMAGE,damageType:"THUNDER",damagedUnitIds:hitRegistry,origin:{x,y}});
     }
+    if(region.length)events.push({type:"ELECTRIC_CONDUCTION",x,y,effect:EFFECT.ELECTRIFIED,origin:{x,y},regionSize:region.length,tiles:region.map(tile=>({x:tile.x,y:tile.y}))});
     return region;
   }
   function apply({map,state,x,y,forces=[]}){

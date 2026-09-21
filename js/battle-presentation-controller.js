@@ -7,7 +7,7 @@ const TILE_EFFECT_INFO=Object.freeze({
   STEAM:{name:"蒸氣",interaction:"遮蔽視線；持續時間結束後消散。"},
   FRAGMENTS:{name:"岩石破片",interaction:"爆炸擊中石質環境時產生的物理破片效果。"},
   FIRE_TORNADO:{name:"火龍捲",interaction:"燃燒區受到風力作用形成；造成高額火焰環境傷害。"},
-  ELECTRIFIED:{name:"帶電",interaction:"雷元素在水域或雨天可發生傳導。"}
+  ELECTRIFIED:{name:"帶電",interaction:"雷元素會沿四向相連的實際水體傳導；雨天與泥地本身不導電。"}
 });
 const TILE_ENVIRONMENT_NAME=Object.freeze({NONE:"一般",GRASS:"草木",WATER:"水",STONE:"石質"});
 const WEATHER_NAME=Object.freeze({CLEAR:"晴朗",FOG:"迷霧",RAIN:"雨",HEAVY_RAIN:"豪大雨",THUNDERSTORM:"雷雨"});
@@ -38,6 +38,19 @@ function create(ctx){
     return surface==null?physical:Math.max(physical,Number(surface));
   }
 
+  function visibilityModel(){
+    const s=ctx.state(),allVisible=new Set((s.map?.tiles||[]).map(tile=>`${tile.x},${tile.y}`));
+    if(!s.environmentState||!window.EnvironmentEngine?.visionModifier)return{active:false,visible:allVisible};
+    const blockers=(s.map.tiles||[]).filter(tile=>EnvironmentEngine.visionModifier(s.environmentState,tile.x,tile.y)?.blocked);
+    if(!blockers.length)return{active:false,visible:allVisible};
+    const observers=(s.units||[]).filter(unit=>unit.alive&&teamPresentation(unit.team)==="PLAYER"),visible=new Set();
+    for(const tile of s.map.tiles||[]){
+      if(observers.some(observer=>(observer.x===tile.x&&observer.y===tile.y)||TacticalEngine.canSee(s.map,observer,tile,s.environmentState)))visible.add(`${tile.x},${tile.y}`);
+    }
+    return{active:true,visible};
+  }
+  function tileVisible(tile,visibility=visibilityModel()){return !!tile&&visibility.visible.has(`${tile.x},${tile.y}`)}
+
   function tileInteractions(tile,effects){
     const s=ctx.state(),environment=EnvironmentEngine.environmentAt(s.map,tile.x,tile.y),notes=[];
     if(environment==="GRASS"){
@@ -50,7 +63,6 @@ function create(ctx){
     }
     if(environment==="STONE")notes.push("EXPLOSION 可產生岩石破片；可破壞的石質物件可能被炸開。");
     if(tile.terrain==="MUD")notes.push("泥濘提高一般移動成本；雨勢結束後恢復為平地。");
-    if(EnvironmentEngine.isRain(s.environmentState))notes.push("雨天環境具導電性。");
     for(const effect of effects||[]){
       const note=TILE_EFFECT_INFO[effect.type]?.interaction;
       if(note&&!notes.includes(note))notes.push(note);
@@ -96,9 +108,10 @@ function create(ctx){
   function unitPresentation(unit){
     const s=ctx.state();
     if(!unit?.alive)return null;
-    const tile=TacticalEngine.tile(s.map,unit.x,unit.y),maxHp=Number(unit.character.combat.hp||unit.hp||1),combat=unit.character.combat||{};
+    const tile=TacticalEngine.tile(s.map,unit.x,unit.y),team=teamPresentation(unit.team);
+    if(team!=="PLAYER"&&!tileVisible(tile))return null;
+    const maxHp=Number(unit.character.combat.hp||unit.hp||1),combat=unit.character.combat||{};
     const baseHit=Math.max(BATTLE_RULES.combatParams.minHit,Math.min(BATTLE_RULES.combatParams.maxHit,BATTLE_RULES.combatParams.baseHit+BattleEngine.accuracy(unit.character,{})));
-    const team=teamPresentation(unit.team);
     const actionState=team==="ENEMY"?"敵方單位":team==="NEUTRAL"?"中立／野怪":unit.acted?(unit.waited?"已待機":"已完成主動行動 / 可支援"):unit.moved?"已移動 / 可攻擊":"可移動 / 可行動";
     const preview=s.selected&&s.selected!==unit&&s.selectedSkill&&s.mode==="attack"?combatPreview(s.selected,unit,s.selectedSkill):null;
     return {
@@ -113,7 +126,7 @@ function create(ctx){
   }
 
   function battleSnapshot(){
-    const s=ctx.state();
+    const s=ctx.state(),visibility=visibilityModel();
     const reachable=s.selected&&s.phase===ctx.PHASE.PLAYER&&!s.selected.acted&&!s.selected.moved&&s.mode==="command"?TacticalEngine.reachable(s.map,s.units,s.selected):new Map();
     const targets=s.selected&&s.phase===ctx.PHASE.PLAYER&&!s.selected.acted&&s.mode==="attack"&&s.selectedSkill&&ctx.targetType(s.selectedSkill)==="SINGLE"?ctx.targetableEntities(s.selected,s.selectedSkill):[];
     const mapTargets=s.selected&&s.phase===ctx.PHASE.PLAYER&&!s.selected.acted&&s.mode==="map-target"&&s.selectedSkill?ctx.mapTargetTiles(s.selected,s.selectedSkill):[];
@@ -128,6 +141,7 @@ function create(ctx){
         x:tile.x,y:tile.y,terrain:tile.terrain,elevation:Number(tile.elevation||0),...tileHydrology(tile),
         reachable:reachable.has(tile.x+","+tile.y),attackable,deployable,
         inspected:!!(s.inspectedTile&&s.inspectedTile.x===tile.x&&s.inspectedTile.y===tile.y),effects:effects.map(effect=>effect.type),
+        fogged:visibility.active&&!tileVisible(tile,visibility),visionBlocked:!!s.environmentState&&!!EnvironmentEngine.visionModifier(s.environmentState,tile.x,tile.y)?.blocked,
         deploymentAreaOwner:points.find(point=>(point.area||[]).some(t=>t.x===tile.x&&t.y===tile.y))?.owner||null,
         capturePoint:capturePoint?{id:capturePoint.id,name:capturePoint.name,owner:capturePoint.owner}:null,
         core:core?{id:core.id,owner:core.owner,name:core.name,hp:core.hp,maxHp:core.maxHp}:null
@@ -138,7 +152,7 @@ function create(ctx){
       cores:s.cores.map(core=>({...core})),
       presentation:{deploymentPoints:points.map(point=>({id:point.id,name:point.name,owner:point.owner,capturable:point.capturable!==false,area:(point.area||[]).map(t=>({...t})),captureTiles:(point.captureTiles||[]).map(t=>({...t}))})),
         enemyHandCount:s.enemyCardState?.zones?.hand?.length||0,enemyDeckCount:s.enemyCardState?.zones?.deck?.length||0},
-      units:s.units.filter(u=>u.alive).map(u=>{
+      units:s.units.filter(u=>u.alive&&(teamPresentation(u.team)==="PLAYER"||tileVisible(TacticalEngine.tile(s.map,u.x,u.y),visibility))).map(u=>{
         const tile=TacticalEngine.tile(s.map,u.x,u.y);
         return {
           id:u.id,x:u.x,y:u.y,z:Number(u.z??(TacticalEngine.elevation(tile)||0)),renderZ:unitRenderZ(u,tile),
