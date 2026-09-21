@@ -1,158 +1,25 @@
 window.MonsterDatabase=(()=>{
-  const monsters=new Map();
-
-  function normalize(def){
-    if(!def?.id||!def?.characterId)throw new Error("MonsterDatabase.register requires id and characterId.");
-    return Object.freeze({
-      id:String(def.id),
-      characterId:String(def.characterId),
-      family:String(def.family||"MONSTER"),
-      habitat:Object.freeze([...(def.habitat||[])]),
-      traits:Object.freeze([...(def.traits||[])]),
-      aiProfile:String(def.aiProfile||"WILD"),
-      encounterRewards:Object.freeze([...(def.encounterRewards||[])].map(r=>Object.freeze({...r})))
-    });
-  }
-
-  function register(def){
-    const value=normalize(def);
-    monsters.set(value.id,value);
-    return value;
-  }
-
-  function get(id){return monsters.get(String(id))||null;}
-  function forCharacter(characterId){return [...monsters.values()].find(m=>m.characterId===characterId)||null;}
-  function list(){return [...monsters.values()];}
-
-  return Object.freeze({register,get,forCharacter,list});
+ const monsters=new Map();
+ function normalize(d){if(!d?.id||!d?.characterId)throw new Error("MonsterDatabase.register requires id and characterId.");return Object.freeze({id:String(d.id),characterId:String(d.characterId),family:String(d.family||"MONSTER"),habitat:Object.freeze([...(d.habitat||[])]),traits:Object.freeze([...(d.traits||[])]),aiProfile:String(d.aiProfile||"WILD"),spawnRule:d.spawnRule?Object.freeze(JSON.parse(JSON.stringify(d.spawnRule))):null,encounterRewards:Object.freeze([...(d.encounterRewards||[])].map(r=>Object.freeze({...r})))})}
+ function register(d){const v=normalize(d);monsters.set(v.id,v);return v}
+ function get(id){return monsters.get(String(id))||null}
+ function forCharacter(id){return [...monsters.values()].find(m=>m.characterId===id)||null}
+ function list(){return [...monsters.values()]}
+ return Object.freeze({register,get,forCharacter,list});
 })();
-
 window.EncounterEngine=(()=>{
-  const TEAM_NEUTRAL="N";
-  const TRIGGER=Object.freeze({BATTLE_START:"BATTLE_START",ROUND_START:"ROUND_START",TILE_ENTER:"TILE_ENTER",SCRIPT:"SCRIPT"});
-
-  const key=(x,y)=>`${x},${y}`;
-  const clone=value=>value==null?value:JSON.parse(JSON.stringify(value));
-
-  function create(definitions=[]){
-    return {
-      definitions:(definitions||[]).map((def,index)=>normalizeDefinition(def,index)),
-      fired:new Set(),
-      spawned:[]
-    };
-  }
-
-  function normalizeDefinition(def,index=0){
-    if(!def?.monsterId)throw new Error("Encounter definition requires monsterId.");
-    return {
-      id:String(def.id||`encounter_${index}`),
-      monsterId:String(def.monsterId),
-      trigger:{type:TRIGGER.BATTLE_START,...clone(def.trigger||{})},
-      once:def.once!==false,
-      conditions:clone(def.conditions||[]),
-      spawn:{count:1,preferDeepest:false,...clone(def.spawn||{})}
-    };
-  }
-
-  function triggerMatches(trigger,event){
-    if(!trigger||!event||trigger.type!==event.type)return false;
-    for(const [name,value] of Object.entries(trigger)){
-      if(name==="type")continue;
-      if(event[name]!==value)return false;
-    }
-    return true;
-  }
-
-  function conditionMatches(condition,{map,units,event}={}){
-    if(!condition)return true;
-    if(condition.type==="FLAG")return event?.flags?.[condition.key]===condition.value;
-    if(condition.type==="ROUND_AT_LEAST")return Number(event?.round||0)>=Number(condition.round||0);
-    if(condition.type==="TERRAIN_EXISTS")return (map?.tiles||[]).some(tile=>tile.terrain===condition.terrain);
-    if(condition.type==="MONSTER_ABSENT")return !(units||[]).some(unit=>unit.alive&&unit.monsterId===condition.monsterId);
-    return true;
-  }
-
-  function habitatMatches(tile,monster,spawn){
-    if(!tile||!monster)return false;
-    if(spawn?.terrain&&tile.terrain!==spawn.terrain)return false;
-    const habitat=monster.habitat||[];
-    if(habitat.length){
-      const waterOk=habitat.includes("WATER")&&window.HydrologyEngine?.isWater?.(tile);
-      if(!waterOk&&!habitat.includes(tile.terrain))return false;
-    }
-    if(Number(spawn?.minWaterDepth||0)>0&&Number(window.HydrologyEngine?.waterDepth?.(tile)||0)<Number(spawn.minWaterDepth))return false;
-    return true;
-  }
-
-  function objectBlocks(map,tile){
-    return (map?.objects||[]).some(object=>!object.destroyed&&object.blocksMovement&&object.x===tile.x&&object.y===tile.y);
-  }
-
-  function chooseSpawnTiles({map,units,monster,spawn}={}){
-    const occupied=new Set((units||[]).filter(unit=>unit.alive).map(unit=>key(unit.x,unit.y)));
-    const explicit=(spawn?.tiles||[])
-      .map(pos=>window.HydrologyEngine?.tileAt?.(map,pos.x,pos.y)||map?.tiles?.find(tile=>tile.x===pos.x&&tile.y===pos.y))
-      .filter(Boolean);
-    let candidates=(explicit.length?explicit:(map?.tiles||[])).filter(tile=>
-      !occupied.has(key(tile.x,tile.y))&&
-      !objectBlocks(map,tile)&&
-      habitatMatches(tile,monster,spawn)
-    );
-    candidates.sort((a,b)=>{
-      if(spawn?.preferDeepest){
-        const depthDiff=Number(window.HydrologyEngine?.waterDepth?.(b)||0)-Number(window.HydrologyEngine?.waterDepth?.(a)||0);
-        if(depthDiff)return depthDiff;
-      }
-      const elevationDiff=Number(a.elevation||0)-Number(b.elevation||0);
-      return elevationDiff||a.y-b.y||a.x-b.x;
-    });
-    return candidates;
-  }
-
-  function spawnDefinition(state,definition,{map,units,createUnit,pushLog,event}={}){
-    const monster=MonsterDatabase.get(definition.monsterId);
-    if(!monster)return[];
-    if(definition.once&&state?.fired?.has(definition.id))return[];
-    if(!triggerMatches(definition.trigger,event))return[];
-    if(!(definition.conditions||[]).every(condition=>conditionMatches(condition,{map,units,event})))return[];
-
-    const count=Math.max(1,Math.floor(Number(definition.spawn?.count||1)));
-    const candidates=chooseSpawnTiles({map,units,monster,spawn:definition.spawn});
-    const spawned=[];
-    for(let i=0;i<count&&candidates.length;i++){
-      const tile=candidates.shift();
-      const id=`n_${definition.id}_${i}`;
-      const unit=createUnit(id,TEAM_NEUTRAL,monster.characterId,tile.x,tile.y);
-      if(!unit)continue;
-      unit.faction="NEUTRAL";
-      unit.monsterId=monster.id;
-      unit.encounterId=definition.id;
-      unit.encounterAI=monster.aiProfile;
-      unit.encounterHabitat=[...(monster.habitat||[])];
-      units.push(unit);
-      state?.spawned?.push({encounterId:definition.id,unitId:unit.id,monsterId:monster.id,x:tile.x,y:tile.y});
-      spawned.push(unit);
-      pushLog?.(`遭遇事件｜${unit.character.name} 出現在 (${tile.x},${tile.y})。`,"SYSTEM");
-    }
-    if(spawned.length&&definition.once)state?.fired?.add(definition.id);
-    return spawned;
-  }
-
-  function trigger(state,event,context){
-    if(!state)return[];
-    const spawned=[];
-    for(const definition of state.definitions||[])spawned.push(...spawnDefinition(state,definition,{...context,event}));
-    return spawned;
-  }
-
-  function spawnInitial(state,context){return trigger(state,{type:TRIGGER.BATTLE_START},context);}
-
-  function habitatAllows(unit,tile){
-    if(!unit||!tile)return false;
-    const monster=MonsterDatabase.get(unit.monsterId)||MonsterDatabase.forCharacter(unit.character?.id);
-    if(!monster||!(monster.habitat||[]).length)return true;
-    return habitatMatches(tile,monster,{});
-  }
-
-  return Object.freeze({TEAM_NEUTRAL,TRIGGER,create,trigger,spawnInitial,habitatAllows});
+ const TEAM_NEUTRAL="N",TRIGGER=Object.freeze({BATTLE_START:"BATTLE_START",ROUND_START:"ROUND_START",TILE_ENTER:"TILE_ENTER",SCRIPT:"SCRIPT"}),key=(x,y)=>`${x},${y}`,clone=v=>v==null?v:JSON.parse(JSON.stringify(v));
+ function normalizeDefinition(d,i=0){if(!d?.monsterId)throw new Error("Encounter definition requires monsterId.");return{id:String(d.id||`encounter_${i}`),monsterId:String(d.monsterId),trigger:{type:TRIGGER.BATTLE_START,...clone(d.trigger||{})},once:d.once!==false,conditions:clone(d.conditions||[]),spawn:{count:1,preferDeepest:false,...clone(d.spawn||{})}}}
+ function habitatMatches(t,m,s){if(!t||!m)return false;if(s?.terrain&&t.terrain!==s.terrain)return false;const h=m.habitat||[];if(h.length){const w=h.includes("WATER")&&window.HydrologyEngine?.isWater?.(t);if(!w&&!h.includes(t.terrain))return false}return !(Number(s?.minWaterDepth||0)>0&&Number(window.HydrologyEngine?.waterDepth?.(t)||0)<Number(s.minWaterDepth))}
+ function objectBlocks(map,t){return(map?.objects||[]).some(o=>!o.destroyed&&o.blocksMovement&&o.x===t.x&&o.y===t.y)}
+ function chooseSpawnTiles({map,units,monster,spawn}={}){const occ=new Set((units||[]).filter(u=>u.alive).map(u=>key(u.x,u.y)));const ex=(spawn?.tiles||[]).map(p=>window.HydrologyEngine?.tileAt?.(map,p.x,p.y)||map?.tiles?.find(t=>t.x===p.x&&t.y===p.y)).filter(Boolean);let c=(ex.length?ex:(map?.tiles||[])).filter(t=>!occ.has(key(t.x,t.y))&&!objectBlocks(map,t)&&habitatMatches(t,monster,spawn));c.sort((a,b)=>{if(spawn?.preferDeepest){const d=Number(window.HydrologyEngine?.waterDepth?.(b)||0)-Number(window.HydrologyEngine?.waterDepth?.(a)||0);if(d)return d}return Number(a.elevation||0)-Number(b.elevation||0)||a.y-b.y||a.x-b.x});return c}
+ function ecologicalDefinitions(map){return MonsterDatabase.list().filter(m=>m.spawnRule).map(m=>normalizeDefinition({id:`ecology_${m.id}`,monsterId:m.id,trigger:{type:TRIGGER.BATTLE_START},once:true,spawn:m.spawnRule})).filter(d=>chooseSpawnTiles({map,units:[],monster:MonsterDatabase.get(d.monsterId),spawn:d.spawn}).length)}
+ function create(defs=[],ctx={}){const explicit=(defs||[]).map(normalizeDefinition),ids=new Set(explicit.map(d=>d.id)),eco=ctx.map?ecologicalDefinitions(ctx.map):[];return{definitions:[...explicit,...eco.filter(d=>!ids.has(d.id))],fired:new Set(),spawned:[]}}
+ function triggerMatches(t,e){if(!t||!e||t.type!==e.type)return false;return Object.entries(t).every(([k,v])=>k==="type"||e[k]===v)}
+ function conditionMatches(c,{map,units,event}={}){if(!c)return true;if(c.type==="FLAG")return event?.flags?.[c.key]===c.value;if(c.type==="ROUND_AT_LEAST")return Number(event?.round||0)>=Number(c.round||0);if(c.type==="TERRAIN_EXISTS")return(map?.tiles||[]).some(t=>t.terrain===c.terrain);if(c.type==="MONSTER_ABSENT")return!(units||[]).some(u=>u.alive&&u.monsterId===c.monsterId);return true}
+ function spawnDefinition(state,d,{map,units,createUnit,pushLog,event}={}){const m=MonsterDatabase.get(d.monsterId);if(!m||d.once&&state?.fired?.has(d.id)||!triggerMatches(d.trigger,event)||!(d.conditions||[]).every(c=>conditionMatches(c,{map,units,event})))return[];const c=chooseSpawnTiles({map,units,monster:m,spawn:d.spawn}),out=[];for(let i=0,n=Math.max(1,Math.floor(Number(d.spawn?.count||1)));i<n&&c.length;i++){const t=c.shift(),u=createUnit(`n_${d.id}_${i}`,TEAM_NEUTRAL,m.characterId,t.x,t.y);if(!u)continue;u.faction="NEUTRAL";u.monsterId=m.id;u.encounterId=d.id;u.encounterAI=m.aiProfile;u.encounterHabitat=[...(m.habitat||[])];units.push(u);state.spawned.push({encounterId:d.id,unitId:u.id,monsterId:m.id,x:t.x,y:t.y});out.push(u);pushLog?.(`遭遇事件｜${u.character.name} 出現在 (${t.x},${t.y})。`,"SYSTEM")}if(out.length&&d.once)state.fired.add(d.id);return out}
+ function trigger(state,event,ctx){if(!state)return[];return(state.definitions||[]).flatMap(d=>spawnDefinition(state,d,{...ctx,event}))}
+ function spawnInitial(state,ctx){return trigger(state,{type:TRIGGER.BATTLE_START},ctx)}
+ function habitatAllows(u,t){if(!u||!t)return false;const m=MonsterDatabase.get(u.monsterId)||MonsterDatabase.forCharacter(u.character?.id);return!m||!(m.habitat||[]).length?true:habitatMatches(t,m,{})}
+ return Object.freeze({TEAM_NEUTRAL,TRIGGER,create,trigger,spawnInitial,habitatAllows});
 })();
