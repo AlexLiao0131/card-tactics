@@ -1,14 +1,3 @@
-.tile-inspector{position:absolute;z-index:40;left:10px;bottom:154px;width:min(360px,44vw);border:1px solid #647487;border-radius:10px;background:#081018e8;box-shadow:0 8px 24px #0008;opacity:0;visibility:hidden;pointer-events:none;transform:translateY(8px);transition:.14s ease}
-.tile-inspector.visible{opacity:1;visibility:visible;pointer-events:auto;transform:none}
-.tile-inspector.with-unit{bottom:250px}
-.tile-inspector-main{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;width:100%;padding:8px 34px 8px 10px!important;text-align:left!important;border:0!important;background:transparent!important;color:#edf4fb!important}
-.tile-inspector-main strong{font-size:12px}.tile-inspector-main span{font-size:10px;color:#cfe2f4}.tile-inspector-main small{grid-column:1/-1;font-size:9px;color:#aebbc8}
-.tile-inspector-close{position:absolute;right:5px;top:5px;width:24px!important;min-width:24px!important;height:24px;padding:0!important;border-radius:50%;font-size:16px}
-.tile-inspector pre{display:none;margin:0;padding:8px 10px 10px;border-top:1px solid #ffffff18;max-height:28vh;overflow:auto;white-space:pre-wrap;color:#d8e1ec;font:10px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-.tile-inspector.expanded pre{display:block}
-@media(max-width:700px){
-  .tile-inspector{left:5px;bottom:122px;width:min(310px,70vw)}
-  .tile-inspector.with-unit{bottom:208px}
-  .tile-inspector-main{padding:6px 32px 6px 8px!important}
-  .tile-inspector pre{max-height:24vh;font-size:9px}
-}
+/* Legacy floating tile inspector is retired.
+   Tile information is available only through the on-demand unified context inspector. */
+.tile-inspector{display:none!important}
