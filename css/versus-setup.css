@@ -3,101 +3,98 @@
 .versus-map-size select{margin:0}
 .versus-map-size small{display:block;margin-top:8px;color:#aeb8c5;font-size:11px;line-height:1.45}
 
+/* Core HUD lives in normal document flow: it never overlays the battlefield. */
 .versus-core-hud{
   display:none;
-  position:fixed;
-  z-index:64;
-  left:50%;
-  top:6px;
-  transform:translateX(-50%);
-  width:min(760px,calc(100vw - 24px));
+  width:min(680px,100%);
+  margin:4px auto 8px;
   pointer-events:none
 }
 .versus-core-hud.active{display:block}
 
 .versus-core-row{
   display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:18px
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  gap:10px
 }
-.core-side{
+.versus-core-side{
   min-width:0;
-  padding:8px 14px 7px;
+  padding:6px 10px 5px;
   border:1px solid #8b7954;
-  border-radius:13px;
+  border-radius:10px;
   background:#0c131de8;
-  box-shadow:0 5px 18px #0008
+  box-shadow:0 3px 10px #0006
 }
-.core-line{
+.versus-core-line{
   display:flex;
   align-items:center;
-  gap:12px;
+  justify-content:space-between;
+  gap:8px;
   min-width:0;
   font-weight:900;
-  letter-spacing:.025em;
   white-space:nowrap
 }
-.core-line strong,.core-line span{
+.versus-core-line strong,
+.versus-core-line span{
   overflow:hidden;
   text-overflow:ellipsis;
   white-space:nowrap
 }
-.core-line strong{font-size:13px}
-.core-line span{font-size:13px}
-.core-side.player .core-line{color:#72b7ff}
-.core-side.enemy .core-line{color:#ff7e89;justify-content:flex-end}
+.versus-core-line strong{font-size:12px}
+.versus-core-line span{font-size:12px}
+.versus-core-side--player .versus-core-line{color:#72b7ff}
+.versus-core-side--enemy .versus-core-line{color:#ff7e89}
 
-.core-hp-track{
-  height:7px;
-  margin-top:6px;
+.versus-core-hp-track{
+  height:4px;
+  margin-top:4px;
   border-radius:999px;
   overflow:hidden;
   background:#202833;
   box-shadow:inset 0 0 0 1px #0008
 }
-.core-hp-track i{
+.versus-core-hp-track i{
   display:block;
   height:100%;
   width:0;
   border-radius:inherit;
   transition:width .18s ease
 }
-.core-side.player .core-hp-track i{background:#6db8ff}
-.core-side.enemy .core-hp-track i{background:#ff7580}
+.versus-core-side--player .versus-core-hp-track i{background:#6db8ff}
+.versus-core-side--enemy .versus-core-hp-track i{background:#ff7580}
 
-.capture-summary{
-  margin-top:14px;
-  padding:8px 12px;
-  border-radius:10px;
+.versus-capture-summary{
+  margin-top:6px;
+  padding:5px 8px;
+  border-radius:8px;
   background:#08111ce8;
   color:#d9c58d;
   text-align:center;
-  font-size:11px;
+  font-size:10px;
   font-weight:900;
-  letter-spacing:.015em;
   white-space:nowrap;
   overflow:hidden;
-  text-overflow:ellipsis;
-  box-shadow:0 4px 16px #0006
+  text-overflow:ellipsis
 }
 
 @media(max-width:700px){
   .versus-map-size label{grid-template-columns:1fr;gap:4px}
   .versus-core-hud{
-    top:118px;
-    width:calc(100vw - 24px)
+    width:100%;
+    margin:2px auto 6px
   }
-  .versus-core-row{gap:18px}
-  .core-side{
-    padding:7px 10px 6px;
-    border-radius:12px
+  .versus-core-row{gap:8px}
+  .versus-core-side{
+    padding:5px 8px 4px;
+    border-radius:9px
   }
-  .core-line{gap:8px}
-  .core-line strong,.core-line span{font-size:11px}
-  .core-hp-track{height:6px;margin-top:5px}
-  .capture-summary{
-    margin-top:16px;
-    padding:7px 8px;
+  .versus-core-line{gap:5px}
+  .versus-core-line strong,
+  .versus-core-line span{font-size:10px}
+  .versus-core-hp-track{height:4px;margin-top:3px}
+  .versus-capture-summary{
+    margin-top:5px;
+    padding:4px 6px;
     font-size:9px
   }
 }
