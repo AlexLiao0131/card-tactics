@@ -4,7 +4,8 @@
 const TILE_EFFECT_INFO=Object.freeze({
   TORNADO:{name:"龍捲風",interaction:"持續風場；地面單位進入時觸發共用強制位移與墜落判定。"},
   BURNING:{name:"燃燒",interaction:"小火可被水／豪雨熄滅；風可使燃燒區形成火龍捲。"},
-  STEAM:{name:"蒸氣",interaction:"遮蔽視線；持續時間結束後消散。"},
+  BOILING:{name:"沸騰",interaction:"水體受持續高熱後進入沸騰；水中單位受高熱傷害，再次受高熱會逐步蒸發水量。"},
+  STEAM:{name:"蒸氣",interaction:"蒸發／高熱產生的視線遮蔽；可被風力吹散。"},
   FRAGMENTS:{name:"岩石破片",interaction:"爆炸擊中石質環境時產生的物理破片效果。"},
   FIRE_TORNADO:{name:"火龍捲",interaction:"燃燒區受到風力作用形成；造成高額火焰環境傷害。"},
   ELECTRIFIED:{name:"帶電",interaction:"雷元素會沿四向相連的實際水體傳導；雨天與泥地本身不導電。"}
@@ -58,7 +59,8 @@ function create(ctx){
       else notes.push("草木可被 FIRE／HEAVY_FIRE 點燃。");
     }
     if(environment==="WATER"){
-      notes.push("小火會被熄滅；HEAVY_FIRE 會產生蒸氣並蒸乾水域，地形轉為陸地。");
+      notes.push("小火會被熄滅；第一次 HEAVY_FIRE 使水域沸騰並產生蒸氣，持續高熱才逐步蒸發水量。");
+      notes.push("降雨先使平地飽和成泥濘；土壤飽和或湖水溢流後才形成地表積水。水位會依地形高度與相鄰盆地重新分配。");
       notes.push("水域可傳導雷元素。");
     }
     if(environment==="STONE")notes.push("EXPLOSION 可產生岩石破片；可破壞的石質物件可能被炸開。");
@@ -76,11 +78,13 @@ function create(ctx){
     const environment=EnvironmentEngine.environmentAt(s.map,tile.x,tile.y);
     const effects=s.environmentState?EnvironmentEngine.effectAt(s.environmentState,tile.x,tile.y):[];
     const object=(s.map.objects||[]).find(o=>!o.destroyed&&o.x===tile.x&&o.y===tile.y);
+    const depth=HydrologyEngine.waterDepth(tile),surface=HydrologyEngine.waterSurfaceZ(tile);
     const lines=[
       `地圖格 (${tile.x},${tile.y})｜${terrain.name||tile.terrain}｜H${Number(tile.elevation||0)}`,
       `移動成本：${terrain.passable===false?"不可通行":terrain.moveCost??"-"}｜迴避修正：${Number(terrain.evasion||0)>=0?"+":""}${Number(terrain.evasion||0)}${terrain.rangedAccuracy?`｜遠程命中 +${terrain.rangedAccuracy}`:""}`,
       `環境材質：${TILE_ENVIRONMENT_NAME[environment]||environment}｜天候：${WEATHER_NAME[s.environmentState?.weather]||s.environmentState?.weather||"晴朗"}`
     ];
+    if(depth>0)lines.push(`水文：地面 H${Number(tile.elevation||0)}｜水深 ${Number(depth).toFixed(2)}｜水面 H${Number(surface).toFixed(2)}`);
     if(object)lines.push(`地圖物件：${object.name||object.id}${object.destructible?"｜可破壞":""}`);
     if(effects.length)lines.push("目前效果："+effects.map(effect=>{
       const info=TILE_EFFECT_INFO[effect.type],duration=effect.duration==null?"":`（剩 ${effect.duration} 回合）`,damage=effect.damage?`／傷害 ${effect.damage}`:"";

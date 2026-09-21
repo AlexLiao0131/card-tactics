@@ -27,6 +27,7 @@ window.VISUALS={
     },
     effects:{
       BURNING:{primitive:"TEXT",text:"🔥",fontSize:18},
+      BOILING:{primitive:"TEXT",text:"🫧",fontSize:19},
       STEAM:{primitive:"TEXT",text:"♨",fontSize:17},
       TORNADO:{primitive:"TEXT",text:"🌪️",fontSize:27},
       FIRE_TORNADO:{primitive:"TEXT",text:"🌪️🔥",fontSize:24},
