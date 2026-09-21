@@ -12,6 +12,31 @@
     MOUNTAIN_WALK:"山地行走",IGNORE_GROUND_TERRAIN:"無視地面地形"
   });
 
+
+  const VISUAL_STYLE_ID="ct-card-visual-style";
+  function ensureVisualStyles(){
+    if(document.getElementById(VISUAL_STYLE_ID))return;
+    const style=document.createElement("style");
+    style.id=VISUAL_STYLE_ID;
+    style.textContent=`
+      .fan-card,.preview-card-face{position:relative;overflow:hidden}
+      .fan-card .fan-art,.preview-card-illustration{position:absolute;inset:0;background-size:cover;background-position:center top;background-repeat:no-repeat;pointer-events:none}
+      .fan-card .fan-art{opacity:.72;filter:saturate(1.04)}
+      .fan-card .fan-sheen,.preview-card-illustration::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(4,10,18,.04) 0%,rgba(4,10,18,.18) 28%,rgba(4,10,18,.58) 74%,rgba(4,10,18,.86) 100%);pointer-events:none}
+      .fan-card > *:not(.fan-art):not(.fan-sheen){position:relative;z-index:1}
+      .fan-card.has-art small{color:#e7edf5;text-shadow:0 1px 2px rgba(0,0,0,.8)}
+      .preview-card-face{min-height:250px;padding-top:156px!important}
+      .preview-card-illustration{opacity:.95;inset:0 0 auto 0;height:172px;border-bottom:1px solid rgba(255,255,255,.12)}
+      .preview-card-face > *:not(.preview-card-illustration){position:relative;z-index:1}
+      .preview-card-face strong,.preview-card-face small,.preview-card-face .preview-cost{text-shadow:0 1px 2px rgba(0,0,0,.8)}
+      .preview-card-face.no-art{padding-top:52px!important}
+    `;
+    document.head.appendChild(style);
+  }
+  function resolveVisualCandidate(obj,keys){if(!obj)return null;for(const k of keys){const path=String(k).split(".");let cur=obj;for(const seg of path){cur=cur?.[seg];if(cur==null)break;}if(typeof cur==="string"&&cur)return cur}return null}
+  function resolveCardArt(card){if(!card)return null;const self=resolveVisualCandidate(card,["card","art.card","visual.card","assets.card","portrait","art.portrait","visual.portrait","assets.portrait","image"]);if(self)return self;const character=window.CHARACTERS?.[card.characterId];return resolveVisualCandidate(character,["card","art.card","visual.card","assets.card","portrait","art.portrait","visual.portrait","assets.portrait","image"])}
+  function artLayer(url,cls){return url?`<span class="${cls}" style="background-image:url('${String(url).replace(/'/g,"%27")}')"></span>`:"";}
+
   function kind(card){return card.type==="CHARACTER"?(card.unitType==="HERO"?"英雄角色卡":"角色卡"):"卡牌魔法";}
 
   function keywords(card){
@@ -79,6 +104,7 @@
   }
 
   function render(){
+    ensureVisualStyles();
     const state=CardTacticsRuntime.getCardState();if(!state)return;
     const phase=CardTacticsRuntime.getPhase(),pending=CardTacticsRuntime.getPendingCard();
     const enemyState=CardTacticsRuntime.getEnemyCardState?.(),enemyView=CardTacticsRuntime.getEnemyPresentation?.();
@@ -93,9 +119,9 @@
     host.innerHTML=enemyHtml+
       `<div class="battle-resource">💎 ${state.crystals}/${state.crystalCapacity||state.startingCrystals||4}</div><div class="battle-deck-count">牌庫 ${state.zones.deck.length}</div>`+
       (opening?`<div class="mulligan-guide"><strong>起手換牌</strong><span>選擇不要的牌；整場僅一次。</span></div>`:"")+
-      `<div class="fan-hand">${cards.map((c,i)=>{const sel=mulliganSelected.has(c.id),offset=i-(cards.length-1)/2;const tags=keywords(c).join("・");return `<button class="fan-card ${sel?"mulligan-selected":""} ${pending?.id===c.id?"pending":""}" data-card="${c.id}" style="--fan:${offset};--i:${i}" ${!opening&&!(phase==="CARD_PHASE"&&CardPhaseEngine.canPlay(state,c))?"disabled":""}><span class="fan-cost">${c.cost}</span><span class="fan-name">${c.name}</span><small>${opening?(sel?"將換掉":"保留"):(tags||kind(c))}</small></button>`;}).join("")||`<div class="empty-hand">目前沒有手牌</div>`}</div>`+
+      `<div class="fan-hand">${cards.map((c,i)=>{const sel=mulliganSelected.has(c.id),offset=i-(cards.length-1)/2;const tags=keywords(c).join("・");const art=resolveCardArt(c);return `<button class="fan-card ${art?"has-art":""} ${sel?"mulligan-selected":""} ${pending?.id===c.id?"pending":""}" data-card="${c.id}" style="--fan:${offset};--i:${i}" ${!opening&&!(phase==="CARD_PHASE"&&CardPhaseEngine.canPlay(state,c))?"disabled":""}>${artLayer(art,"fan-art")}<span class="fan-sheen"></span><span class="fan-cost">${c.cost}</span><span class="fan-name">${c.name}</span><small>${opening?(sel?"將換掉":"保留"):(tags||kind(c))}</small></button>`;}).join("")||`<div class="empty-hand">目前沒有手牌</div>`}</div>`+
       (opening?`<div class="mulligan-actions"><button id="confirmMulligan" ${mulliganSelected.size?"":"disabled"}>換掉 ${mulliganSelected.size} 張</button><button id="keepOpeningHand">全部保留</button></div>`:"")+
-      (!opening&&!targeting&&preview?`<div class="card-preview"><div class="preview-card-face"><span class="preview-cost">${preview.cost}</span><strong>${preview.name}</strong><small>${keywords(preview).join("・")||kind(preview)}</small><p class="preview-description">${describe(preview)}</p></div><div class="preview-question">要使用這張卡嗎？</div><div class="preview-actions"><button id="confirmCardUse">使用</button><button id="cancelCardPreview">取消</button></div></div>`:"")+
+      (!opening&&!targeting&&preview?(()=>{const art=resolveCardArt(preview);return `<div class="card-preview"><div class="preview-card-face ${art?"":"no-art"}">${artLayer(art,"preview-card-illustration")}<span class="preview-cost">${preview.cost}</span><strong>${preview.name}</strong><small>${keywords(preview).join("・")||kind(preview)}</small><p class="preview-description">${describe(preview)}</p></div><div class="preview-question">要使用這張卡嗎？</div><div class="preview-actions"><button id="confirmCardUse">使用</button><button id="cancelCardPreview">取消</button></div></div>`;})():"")+
       (targeting?`<div class="card-targeting-bar"><button id="cancelCardDeploy">← 取消</button><strong>${pending.name}</strong><span>${pending.type==="CHARACTER"?"請選擇部署位置":"請在戰場選擇目標"}</span></div>`:"")+
       (!opening?`<div class="card-phase-compact-actions"><button id="endCardPhase" ${phase==="CARD_PHASE"&&!targeting?"":"disabled"}>結束卡牌階段</button></div>`:"");
     host.querySelectorAll("[data-card]").forEach(btn=>btn.onclick=()=>{
