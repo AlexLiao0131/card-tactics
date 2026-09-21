@@ -30,12 +30,19 @@ window.CARDS={
 };
 window.CardDatabase=(()=>{
   const AVAILABILITY=Object.freeze({COLLECTION:"COLLECTION",BATTLE_ONLY:"BATTLE_ONLY"});
+  const ACQUISITION=Object.freeze({COLLECTION:"COLLECTION",ENCOUNTER:"ENCOUNTER",GENERATED:"GENERATED",SCRIPTED:"SCRIPTED"});
+  const LIFETIME=Object.freeze({PERMANENT:"PERMANENT",BATTLE:"BATTLE",TURN:"TURN"});
   function get(id){return CARDS[id]||null;}
   function list(ids){return(ids||[]).map(id=>CARDS[id]).filter(Boolean);}
   function availability(card){return card?.availability||AVAILABILITY.COLLECTION;}
-  function isBattleOnly(card){return availability(card)===AVAILABILITY.BATTLE_ONLY;}
-  function canPersist(card){return !!card&&!isBattleOnly(card);}
+  function acquisition(card){return card?.acquisition||ACQUISITION.COLLECTION;}
+  function lifetime(card){
+    if(card?.lifetime)return card.lifetime;
+    return availability(card)===AVAILABILITY.BATTLE_ONLY?LIFETIME.BATTLE:LIFETIME.PERMANENT;
+  }
+  function isBattleOnly(card){return lifetime(card)===LIFETIME.BATTLE||availability(card)===AVAILABILITY.BATTLE_ONLY;}
+  function canPersist(card){return !!card&&lifetime(card)===LIFETIME.PERMANENT&&card.collectible!==false;}
   function isCharacter(card){return card?.type==="CHARACTER";}
   function isSpell(card){return card?.type==="SPELL";}
-  return Object.freeze({AVAILABILITY,get,list,availability,isBattleOnly,canPersist,isCharacter,isSpell});
+  return Object.freeze({AVAILABILITY,ACQUISITION,LIFETIME,get,list,availability,acquisition,lifetime,isBattleOnly,canPersist,isCharacter,isSpell});
 })();

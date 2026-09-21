@@ -48,7 +48,7 @@ function create(ctx){
       ctx.pushLog(`天候變更：${weather==="THUNDERSTORM"?"雷雨":weather==="HEAVY_RAIN"?"豪大雨":weather==="FOG"?"迷霧":weather}。`,"SYSTEM");
       ctx.setPendingCard(null);ctx.render();ctx.emitState();return true;
     }
-    if(["AREA_FIRE","AREA_PUSH","AREA_HEAL","AREA_DAMAGE","AREA_RELATION","AREA_BUFF","DISPEL"].includes(card.effect?.type)){
+    if(["AREA_FIRE","AREA_PUSH","AREA_HEAL","AREA_DAMAGE","AREA_RELATION","AREA_BUFF","DISPEL","HYDROLOGY_FLOOD"].includes(card.effect?.type)){
       ctx.setPendingCard(card);
       ctx.pushLog(`選擇卡牌魔法「${card.name}」｜請點選戰場上的施放中心。`,"SYSTEM");
       ctx.render();return true;
@@ -62,6 +62,7 @@ function create(ctx){
     const effect=card.effect||{},affected=ctx.aoeTiles(center,Number(effect.radius||0));
     if(!CardPhaseEngine.commit(s.cardState,card))return false;
     ctx.pushLog(`施放卡牌魔法「${card.name}」｜中心 (${center.x},${center.y})｜消耗 ${card.cost} 水晶。`,"SYSTEM");
+
     if(effect.type==="AREA_FIRE"){
       affected.forEach(tile=>(EnvironmentEngine.apply({map:s.map,state:s.environmentState,x:tile.x,y:tile.y,forces:effect.forces||["FIRE"]})||[]).forEach(ctx.logEnvironmentEvent));
       affected.forEach(tile=>{const u=ctx.unitAt(tile.x,tile.y);if(u)ctx.applyEnvironmentHazardToUnit(u,{reason:"遭野火波及"});});
@@ -87,7 +88,17 @@ function create(ctx){
       affected.forEach(tile=>{const u=ctx.unitAt(tile.x,tile.y);if(!u?.alive||!EffectEngine.targetMatches(source,u,effect.targetFilter||{}))return;EffectEngine.apply({source,target:u,effect:{type:"BUFF",duration:effect.duration,...(effect.buff||{})}});ctx.pushLog(`${card.name} → ${u.character.name}｜獲得陣地強化。`,"BATTLE");});
     }else if(effect.type==="DISPEL"){
       const u=ctx.unitAt(center.x,center.y);if(u?.alive&&u.team===TEAM.PLAYER){const r=EffectEngine.apply({source:{id:"CARD_SOURCE",team:TEAM.PLAYER},target:u,effect:{type:"DISPEL",classification:effect.classification||"NEGATIVE"}});ctx.pushLog(`${card.name} → ${u.character.name}｜移除 ${r.removed||0} 個負面效果。`,"BATTLE");}
+    }else if(effect.type==="HYDROLOGY_FLOOD"){
+      if(!window.HydrologyEngine?.floodArea){
+        ctx.pushLog(`${card.name} 失敗：HydrologyEngine.floodArea 尚未載入。`,"SYSTEM");
+      }else{
+        const events=HydrologyEngine.floodArea(s.map,affected,{surfaceRise:Number(effect.surfaceRise||1),source:card.id});
+        const resolved=events.find(event=>event.type==="FLOOD_AREA_RESOLVED");
+        const wetCount=resolved?.tiles?.filter(tile=>Number(tile.waterDepth||0)>0).length||0;
+        ctx.pushLog(`${card.name}｜注入 Water Volume｜目標水面 H${resolved?.targetSurface??"?"}｜${wetCount} 格形成／加深水域。`,"SYSTEM");
+      }
     }
+
     ctx.setPendingCard(null);ctx.checkMatchEnd();ctx.render();ctx.emitState();return true;
   }
 
