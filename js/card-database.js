@@ -16,12 +16,13 @@ window.CARDS={
   miracle_card:{id:"miracle_card",name:"神跡",type:"SPELL",spellType:"HEAL",faction:"NEUTRAL",cost:6,effect:{type:"AREA_HEAL",radius:1,heal:80,team:"PLAYER"}},
   fog_card:{id:"fog_card",name:"迷霧",type:"SPELL",spellType:"WEATHER",faction:"NEUTRAL",cost:3,effect:{type:"WEATHER",weather:"FOG"}},
   starfall_card:{id:"starfall_card",name:"星隕",type:"SPELL",spellType:"TACTICAL",faction:"NEUTRAL",cost:10,effect:{type:"AREA_DAMAGE",radius:2,damage:100,forces:["HEAVY_FIRE","EXPLOSION","IMPACT"]}},
+  snow_card:{id:"snow_card",name:"降雪",type:"SPELL",spellType:"WEATHER",faction:"NEUTRAL",cost:4,effect:{type:"WEATHER",weather:"SNOW"}},
+  blizzard_card:{id:"blizzard_card",name:"暴風雪",type:"SPELL",spellType:"WEATHER",faction:"NEUTRAL",cost:6,effect:{type:"WEATHER",weather:"BLIZZARD"}},
   bear_trap_card:{id:"bear_trap_card",name:"捕熊陷阱",type:"SPELL",spellType:"TRAP",faction:"HUNTER",cost:2,effect:{type:"TRAP"}},
-  avalanche_card:{id:"avalanche_card",name:"雪崩",type:"SPELL",spellType:"TACTICAL",faction:"HUNTER",cost:6,effect:{type:"AREA_DAMAGE_PUSH"}},
+  avalanche_card:{id:"avalanche_card",name:"雪崩",type:"SPELL",spellType:"TACTICAL",faction:"HUNTER",cost:6,effect:{type:"AREA_DAMAGE",radius:0,damage:0,forces:["AVALANCHE_TRIGGER"]}},
   cassandra_blessing_card:{id:"cassandra_blessing_card",name:"卡珊多拉的祝福",type:"SPELL",spellType:"BUFF",faction:"HUNTER",cost:4,effect:{type:"BUFF"}},
   rain_card:{id:"rain_card",name:"豪大雨",type:"SPELL",spellType:"WEATHER",faction:"NEUTRAL",cost:4,effect:{type:"WEATHER",weather:"HEAVY_RAIN"}},
   resurrection_card:{id:"resurrection_card",name:"復甦",type:"SPELL",spellType:"REVIVE",faction:"NEUTRAL",cost:7,effect:{type:"REVIVE",zone:"GRAVEYARD"}},
-
   reina_card:{id:"reina_card",name:"蕾娜",type:"CHARACTER",characterId:"reina",faction:"ELF_EMPIRE",unitType:"HERO",cost:6},
   elf_shapeshifter_card:{id:"elf_shapeshifter_card",name:"精靈幻獸者",type:"CHARACTER",characterId:"elf_shapeshifter",faction:"ELF_EMPIRE",unitType:"UNIT",cost:4},
   elf_ranger_card:{id:"elf_ranger_card",name:"精靈遊俠",type:"CHARACTER",characterId:"elf_ranger",faction:"ELF_EMPIRE",unitType:"UNIT",cost:4},
@@ -32,17 +33,10 @@ window.CardDatabase=(()=>{
   const AVAILABILITY=Object.freeze({COLLECTION:"COLLECTION",BATTLE_ONLY:"BATTLE_ONLY"});
   const ACQUISITION=Object.freeze({COLLECTION:"COLLECTION",ENCOUNTER:"ENCOUNTER",GENERATED:"GENERATED",SCRIPTED:"SCRIPTED"});
   const LIFETIME=Object.freeze({PERMANENT:"PERMANENT",BATTLE:"BATTLE",TURN:"TURN"});
-  function get(id){return CARDS[id]||null;}
-  function list(ids){return(ids||[]).map(id=>CARDS[id]).filter(Boolean);}
-  function availability(card){return card?.availability||AVAILABILITY.COLLECTION;}
-  function acquisition(card){return card?.acquisition||ACQUISITION.COLLECTION;}
-  function lifetime(card){
-    if(card?.lifetime)return card.lifetime;
-    return availability(card)===AVAILABILITY.BATTLE_ONLY?LIFETIME.BATTLE:LIFETIME.PERMANENT;
-  }
-  function isBattleOnly(card){return lifetime(card)===LIFETIME.BATTLE||availability(card)===AVAILABILITY.BATTLE_ONLY;}
-  function canPersist(card){return !!card&&lifetime(card)===LIFETIME.PERMANENT&&card.collectible!==false;}
-  function isCharacter(card){return card?.type==="CHARACTER";}
-  function isSpell(card){return card?.type==="SPELL";}
+  function get(id){return CARDS[id]||null;} function list(ids){return(ids||[]).map(id=>CARDS[id]).filter(Boolean);}
+  function availability(card){return card?.availability||AVAILABILITY.COLLECTION;} function acquisition(card){return card?.acquisition||ACQUISITION.COLLECTION;}
+  function lifetime(card){if(card?.lifetime)return card.lifetime;return availability(card)===AVAILABILITY.BATTLE_ONLY?LIFETIME.BATTLE:LIFETIME.PERMANENT;}
+  function isBattleOnly(card){return lifetime(card)===LIFETIME.BATTLE||availability(card)===AVAILABILITY.BATTLE_ONLY;} function canPersist(card){return !!card&&lifetime(card)===LIFETIME.PERMANENT&&card.collectible!==false;}
+  function isCharacter(card){return card?.type==="CHARACTER";} function isSpell(card){return card?.type==="SPELL";}
   return Object.freeze({AVAILABILITY,ACQUISITION,LIFETIME,get,list,availability,acquisition,lifetime,isBattleOnly,canPersist,isCharacter,isSpell});
 })();

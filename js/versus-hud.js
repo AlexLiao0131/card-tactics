@@ -1,53 +1,8 @@
 (()=>{
-  const battle=document.getElementById("battleScreen");
-  if(!battle)return;
-  let hud=null;
-
-  function ensure(){
-    if(hud)return hud;
-    hud=document.createElement("div");hud.id="versusCoreHud";hud.className="versus-core-hud";
-    hud.innerHTML=`
-      <div class="core-side player">
-        <strong>我方 CORE</strong>
-        <span class="core-values"></span>
-        <div class="core-bar hp"><i></i></div>
-        <small class="core-shield-label"></small>
-        <div class="core-bar shield"><i></i></div>
-      </div>
-      <div class="versus-center-meta"><div class="capture-summary"></div><small class="generated-map-meta"></small></div>
-      <div class="core-side enemy">
-        <strong>敵方 CORE</strong>
-        <span class="core-values"></span>
-        <div class="core-bar hp"><i></i></div>
-        <small class="core-shield-label"></small>
-        <div class="core-bar shield"><i></i></div>
-      </div>`;
-    battle.querySelector("main")?.appendChild(hud);return hud;
+  const battle=document.getElementById("battleScreen");if(!battle)return;let hud=null;
+  function ensure(){if(hud)return hud;hud=document.createElement("div");hud.id="versusCoreHud";hud.className="versus-core-hud";hud.innerHTML=`<div class="core-side player"><strong>我方 CORE</strong><span class="core-values"></span><div class="core-bar hp"><i></i></div><small class="core-shield-label"></small><div class="core-bar shield"><i></i></div></div><div class="versus-center-meta"><div class="capture-summary"></div><small class="generated-map-meta"></small></div><div class="core-side enemy"><strong>敵方 CORE</strong><span class="core-values"></span><div class="core-bar hp"><i></i></div><small class="core-shield-label"></small><div class="core-bar shield"><i></i></div></div>`;battle.querySelector("main")?.appendChild(hud);return hud;}
+  function render(){const root=ensure(),stage=window.CardTacticsRuntime?.getStage?.(),cores=window.CardTacticsRuntime?.getCores?.()||[],active=stage?.mode==="VERSUS"&&cores.length>0;root.classList.toggle("active",active);if(!active)return;for(const owner of ["PLAYER","ENEMY"]){const core=cores.find(c=>c.owner===owner),side=root.querySelector(`.core-side.${owner==="PLAYER"?"player":"enemy"}`);if(!core||!side)continue;const hpPct=Math.max(0,Math.min(100,Number(core.hp||0)/Math.max(1,Number(core.maxHp||1))*100)),shieldPct=Number(core.maxShield||0)>0?Math.max(0,Math.min(100,Number(core.shield||0)/Number(core.maxShield)*100)):0;side.querySelector(".core-values").textContent=`HP ${core.hp}/${core.maxHp}`;side.querySelector(".core-bar.hp i").style.width=`${hpPct}%`;side.querySelector(".core-shield-label").textContent=Number(core.maxShield||0)>0?`SHIELD ${core.shield}/${core.maxShield}`:"SHIELD -";side.querySelector(".core-bar.shield i").style.width=`${shieldPct}%`;}
+    const points=(stage?.deploymentPoints||[]).filter(p=>p.capturable!==false);root.querySelector(".capture-summary").textContent=points.map(p=>`${p.owner==="PLAYER"?"◆":p.owner==="ENEMY"?"◇":"○"}${p.name}`).join("  ");const meta=stage?.generatedBattlefield;root.querySelector(".generated-map-meta").textContent=meta?`${meta.label} ${meta.width}×${meta.height}｜Seed ${meta.seed}｜${meta.routes||0} 戰線｜${meta.riverCrossings||0} 渡口`:"";
   }
-
-  function render(){
-    const root=ensure(),stage=window.CardTacticsRuntime?.getStage?.(),cores=window.CardTacticsRuntime?.getCores?.()||[];
-    const active=stage?.mode==="VERSUS"&&cores.length>0;
-    root.classList.toggle("active",active);if(!active)return;
-
-    for(const owner of ["PLAYER","ENEMY"]){
-      const core=cores.find(c=>c.owner===owner),side=root.querySelector(`.core-side.${owner==="PLAYER"?"player":"enemy"}`);if(!core||!side)continue;
-      const hpPct=Math.max(0,Math.min(100,Number(core.hp||0)/Math.max(1,Number(core.maxHp||1))*100));
-      const shieldPct=Number(core.maxShield||0)>0?Math.max(0,Math.min(100,Number(core.shield||0)/Number(core.maxShield)*100)):0;
-      side.querySelector(".core-values").textContent=`HP ${core.hp}/${core.maxHp}`;
-      side.querySelector(".core-bar.hp i").style.width=`${hpPct}%`;
-      side.querySelector(".core-shield-label").textContent=Number(core.maxShield||0)>0?`SHIELD ${core.shield}/${core.maxShield}`:"SHIELD -";
-      side.querySelector(".core-bar.shield i").style.width=`${shieldPct}%`;
-    }
-
-    const points=(stage?.deploymentPoints||[]).filter(p=>p.capturable!==false);
-    root.querySelector(".capture-summary").textContent=points.map(p=>`${p.owner==="PLAYER"?"◆":p.owner==="ENEMY"?"◇":"○"}${p.name}`).join("  ");
-    const meta=stage?.generatedBattlefield;
-    root.querySelector(".generated-map-meta").textContent=meta?`${meta.label} ${meta.width}×${meta.height}｜Seed ${meta.seed}`:"";
-  }
-
-  window.addEventListener("cardtactics:state",render);
-  window.addEventListener("cardtactics:battle-render",render);
-  new MutationObserver(render).observe(battle,{attributes:true,attributeFilter:["class"]});
-  render();
+  window.addEventListener("cardtactics:state",render);window.addEventListener("cardtactics:battle-render",render);new MutationObserver(render).observe(battle,{attributes:true,attributeFilter:["class"]});render();
 })();
