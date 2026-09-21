@@ -4,6 +4,14 @@ function create(ctx){
   const {TEAM,PHASE}=ctx;
   const state=()=>ctx.state();
 
+  function waterRecheckUnits(units,reason){
+    (units||[]).filter(unit=>unit?.alive).forEach(unit=>ctx.applyEnvironmentHazardToUnit(unit,{reason,waterTrigger:"CHANGE",includeFire:false}));
+  }
+  function unitsOnTiles(s,tiles){
+    const keys=new Set((tiles||[]).map(tile=>`${tile.x},${tile.y}`));
+    return (s.units||[]).filter(unit=>unit?.alive&&keys.has(`${unit.x},${unit.y}`));
+  }
+
   function begin({initial=false}={}){
     const s=state(),cardState=s.cardState;
     if(cardState.zones.deck.length===0&&cardState.zones.hand.length===0){
@@ -45,8 +53,9 @@ function create(ctx){
       const events=s.environmentState?EnvironmentEngine.setWeather(s.environmentState,weather,s.map):[];
       ctx.pushLog(`施放卡牌魔法「${card.name}」｜消耗 ${card.cost} 水晶。`,"SYSTEM");
       events.forEach(ctx.logEnvironmentEvent);
+      waterRecheckUnits(s.units,"天候造成水位變化");
       ctx.pushLog(`天候變更：${weather==="THUNDERSTORM"?"雷雨":weather==="HEAVY_RAIN"?"豪大雨":weather==="FOG"?"迷霧":weather}。`,"SYSTEM");
-      ctx.setPendingCard(null);ctx.render();ctx.emitState();return true;
+      ctx.setPendingCard(null);ctx.checkMatchEnd();ctx.render();ctx.emitState();return true;
     }
     if(["AREA_FIRE","AREA_PUSH","AREA_HEAL","AREA_DAMAGE","AREA_RELATION","AREA_BUFF","DISPEL","HYDROLOGY_FLOOD"].includes(card.effect?.type)){
       ctx.setPendingCard(card);
@@ -80,6 +89,7 @@ function create(ctx){
       affected.forEach(tile=>{const u=ctx.unitAt(tile.x,tile.y);if(!u?.alive||u.team!==TEAM.PLAYER)return;const before=u.hp;u.hp=Math.min(u.character.combat.hp,u.hp+Number(effect.heal||0));ctx.pushLog(`${card.name} → ${u.character.name}｜回復 ${u.hp-before} HP｜HP ${u.hp}。`,"BATTLE");});
     }else if(effect.type==="AREA_DAMAGE"){
       affected.forEach(tile=>{const u=ctx.unitAt(tile.x,tile.y);if(u)ctx.damageUnitFlat(u,effect.damage||0,card.name);(EnvironmentEngine.apply({map:s.map,state:s.environmentState,x:tile.x,y:tile.y,forces:effect.forces||[]})||[]).forEach(ctx.logEnvironmentEvent);});
+      waterRecheckUnits(unitsOnTiles(s,affected),`${card.name} 改變地形／水位`);
     }else if(effect.type==="AREA_RELATION"){
       const source={id:"CARD_SOURCE",team:TEAM.PLAYER};
       affected.forEach(tile=>{const u=ctx.unitAt(tile.x,tile.y);if(!u?.alive)return;for(const e of effect.effects||[]){if(e.relation!==EffectEngine.relation(source,u))continue;const r=EffectEngine.apply({source,target:u,effect:e});if(e.type==="HEAL")ctx.pushLog(`${card.name} → ${u.character.name}｜回復 ${r.amount||0} HP｜HP ${u.hp}。`,"BATTLE");else if(e.type==="MAGIC_DAMAGE"){ctx.pushLog(`${card.name} → ${u.character.name}｜${r.amount||0} 神聖傷害｜HP ${u.hp}。`,"BATTLE");if(!u.alive)ctx.handleDefeated(u,null,card);}}});
@@ -96,6 +106,7 @@ function create(ctx){
         const resolved=events.find(event=>event.type==="FLOOD_AREA_RESOLVED");
         const wetCount=resolved?.tiles?.filter(tile=>Number(tile.waterDepth||0)>0).length||0;
         ctx.pushLog(`${card.name}｜注入 Water Volume｜目標水面 H${resolved?.targetSurface??"?"}｜${wetCount} 格形成／加深水域。`,"SYSTEM");
+        waterRecheckUnits(unitsOnTiles(s,affected),`${card.name} 造成水位上升`);
       }
     }
 
@@ -110,7 +121,8 @@ function create(ctx){
     unit.cardId=card.id;unit.deployedRound=s.round;unit.moved=true;unit.acted=true;unit.waited=true;
     if(!CardPhaseEngine.commit(s.cardState,card))return false;
     s.units.push(unit);ctx.pushLog(`${card.name} 部署至 (${tile.x},${tile.y})｜消耗 ${card.cost} 水晶。`,"SYSTEM");
-    ctx.setPendingCard(null);ctx.render();ctx.emitState();return true;
+    ctx.applyEnvironmentHazardToUnit(unit,{reason:"部署進入環境",waterTrigger:"ENTER"});
+    ctx.setPendingCard(null);ctx.checkMatchEnd();ctx.render();ctx.emitState();return true;
   }
 
   function cancel(){

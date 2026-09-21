@@ -210,6 +210,7 @@
             if(!CardPhaseEngine.commit(cards,card)){CardPhaseEngine.end(cards);done?.();return;}
             state.units.push(unit);
             ctx.pushLog(`敵方使用「${card.name}」部署至 (${tile.x},${tile.y})｜本回合待命｜消耗 ${card.cost} 水晶。`,"SYSTEM");
+            ctx.applyEnvironmentHazardToUnit(unit,{reason:"部署進入環境",waterTrigger:"ENTER"});
             showStep("DEPLOY",`${card.name} 部署 → (${tile.x},${tile.y})｜本回合待命`,{cardId:card.id,unitId:unit.id});
             afterStep(decide,550);
           },600);
