@@ -29,42 +29,14 @@ function create(ctx){
    const point=capturePointForUnit(unit);if(!point||!DeploymentEngine.canCapture({stage:s.stage,units:s.units,unit,point}))return false;
    const owner=ownerForTeam(unit.team);if(!owner)return false;
    const previousOwner=point.owner;if(!DeploymentEngine.capture(s.stage,point.id,owner))return false;
-   point.heldByUnitId=unit.id;
-   ctx.pushLog(`${unit.character.name} 佔領「${point.name}」｜${previousOwner} → ${owner}｜必須留守才會維持控制。`,"SYSTEM");
+   ctx.pushLog(`${unit.character.name} 佔領「${point.name}」｜${previousOwner} → ${owner}。`,"SYSTEM");
    const damage=Number(s.stage.captureDamage||0),targetOwner=enemyOwner(owner);
    if(damage>0&&targetOwner)damageCore(targetOwner,damage,`${point.name} Core 砲擊`);
    ctx.stageEvent?.({type:"DEPLOYMENT_POINT_CAPTURED",pointId:point.id,owner,previousOwner,unitId:unit.id,characterId:unit.character.id,x:unit.x,y:unit.y});
    unit.moved=true;unit.acted=true;unit.waited=true;ctx.onCaptureComplete?.(unit,point);return true;
  }
 
- function physicalHolders(point,owner){
-   const s=state(),zone=new Set((point.captureTiles||[]).map(t=>`${t.x},${t.y}`));
-   return (s.units||[]).filter(unit=>unit?.alive&&ownerForTeam(unit.team)===owner&&zone.has(`${unit.x},${unit.y}`));
- }
-
- function hasTentativeMoveGrace(point,owner){
-   const phase=window.CardTacticsRuntime?.getPhase?.();
-   if(phase!=="PLAYER_TURN"||owner!=="PLAYER"||!point.heldByUnitId)return false;
-   const holder=(state().units||[]).find(unit=>unit.id===point.heldByUnitId);
-   const focusedId=window.CardTacticsRuntime?.getInspectedUnitPresentation?.()?.id||null;
-   return !!(holder?.alive&&ownerForTeam(holder.team)===owner&&holder.moved&&!holder.acted&&!holder.waited&&focusedId===holder.id);
- }
-
- function reconcileHeldPoints(){
-   const s=state();if(s.stage?.ruleset!=="CORE_CAPTURE")return false;
-   let changed=false;
-   for(const point of DeploymentEngine.points(s.stage)){
-     if(point.capturable===false||point.owner==="NEUTRAL")continue;
-     const holders=physicalHolders(point,point.owner);
-     if(holders.length){point.heldByUnitId=holders[0].id;continue;}
-     if(hasTentativeMoveGrace(point,point.owner))continue;
-     const previousOwner=point.owner;
-     point.owner="NEUTRAL";point.heldByUnitId=null;changed=true;
-     ctx.pushLog(`「${point.name}」失去留守單位｜${previousOwner} → NEUTRAL。`,"SYSTEM");
-     ctx.stageEvent?.({type:"DEPLOYMENT_POINT_LOST",pointId:point.id,previousOwner,owner:"NEUTRAL"});
-   }
-   return changed;
- }
+ function reconcileHeldPoints(){return false;}
 
  function coreCombatTarget(core,attackerTeam){
    if(!core||core.hp<=0)return null;
@@ -76,12 +48,6 @@ function create(ctx){
    const s=state(),entities=[...s.units],owner=ownerForTeam(unit?.team);
    if(s.stage?.ruleset==="CORE_CAPTURE"&&owner){const target=coreCombatTarget(coreForOwner(enemyOwner(owner)),unit.team);if(target)entities.push(target)}
    return entities;
- }
-
- if(window.addEventListener){
-   window.addEventListener("cardtactics:battle-render",()=>{
-     if(reconcileHeldPoints())window.dispatchEvent(new CustomEvent("cardtactics:state"));
-   });
  }
 
  return Object.freeze({ownerForTeam,enemyOwner,coreForOwner,coreAt,capturePointForUnit,canUnitCapture,damageCore,executeCapture,reconcileHeldPoints,coreCombatTarget,combatTargetEntities});
