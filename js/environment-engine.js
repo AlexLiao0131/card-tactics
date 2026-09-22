@@ -30,6 +30,7 @@ window.EnvironmentEngine=(()=>{
     if(isRain(state))events.push(...applyRainToTerrain(map,state));
     else if(!isSnow(state))events.push(...HydrologyEngine.drySoil(map,{source:"CLEAR_WEATHER"}));
     if(window.ClimateEngine)events.push(...ClimateEngine.advance(map,state));
+    if(window.EnvironmentResolver)events.push(...EnvironmentResolver.resolve(map,state,{source:"ENVIRONMENT_TICK"}));
     return events;
   }
   function flammableAt(map,x,y){const tile=tileAt(map,x,y);if(!tile||HydrologyEngine.isWater(tile))return false;const object=objectAt(map,x,y);if(object&&(object.flammable===true||object.environment===ELEMENT.GRASS))return true;return TERRAINS[tile.terrain]?.environment===ELEMENT.GRASS;}
@@ -107,7 +108,13 @@ window.EnvironmentEngine=(()=>{
     if(environment===ELEMENT.WATER){if(forceSet.has(FORCE.HEAVY_FIRE)){removeEffect(state,x,y,EFFECT.BURNING);const waterTile=tileAt(map,x,y);if(window.ClimateEngine?.isFrozen?.(waterTile))events.push({type:"ICE_HEATED",x,y,iceThickness:ClimateEngine.iceThickness(waterTile)});else heatWater(map,state,x,y,events);}else if(forceSet.has(FORCE.FIRE)){removeEffect(state,x,y,EFFECT.BURNING);events.push({type:"FIRE_EXTINGUISHED",x,y});}}
     if(forceSet.has(FORCE.THUNDER)&&isConductive(map,state,x,y))conductThunder(map,state,x,y,events);
     if(environment===ELEMENT.STONE&&forceSet.has(FORCE.EXPLOSION)){addEffect(state,x,y,{type:EFFECT.FRAGMENTS,duration:1,damageType:"PHYSICAL",radius:1});const object=objectAt(map,x,y),destroyed=destroyStoneObject(map,state,object);events.push({type:"STONE_FRAGMENT",x,y,effect:EFFECT.FRAGMENTS,destroyed,objectId:object?.id||null});}
-    if(window.ClimateEngine&&(forceSet.has(FORCE.EXPLOSION)||forceSet.has(FORCE.IMPACT)||forceSet.has(FORCE.AVALANCHE_TRIGGER))){events.push(...ClimateEngine.triggerAvalanche(map,x,y,{state,strength:forceSet.has(FORCE.AVALANCHE_TRIGGER)?1.6:forceSet.has(FORCE.EXPLOSION)?1.25:1,source:forceSet.has(FORCE.AVALANCHE_TRIGGER)?"MAGIC":forceSet.has(FORCE.EXPLOSION)?"EXPLOSION":"IMPACT"}));}
+    if(window.EnvironmentResolver){
+      const disturbance=forceSet.has(FORCE.AVALANCHE_TRIGGER)?1.6:forceSet.has(FORCE.EXPLOSION)?1.25:forceSet.has(FORCE.IMPACT)?1:0;
+      if(disturbance>0){
+        events.push(...EnvironmentResolver.disturb(map,x,y,disturbance,{source:forceSet.has(FORCE.EXPLOSION)?"EXPLOSION":forceSet.has(FORCE.IMPACT)?"IMPACT":"ENVIRONMENT_FORCE"}));
+        events.push(...EnvironmentResolver.resolve(map,state,{source:"DISTURBANCE"}));
+      }
+    }
     return events;
   }
 

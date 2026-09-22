@@ -108,15 +108,42 @@ function create(ctx){
   unit._currentResolving=true;try{const source={x:unit.x-current.flowX,y:unit.y-current.flowY};ctx.pushLog(`${unit.character.name} 遭${reason}沖刷｜流速 ${current.speed.toFixed(2)}｜位移力 ${current.distance}。`,"BATTLE");applyForcedMovement(source,unit,current.distance,{name:"暴漲溪流",damage:Math.max(0,Math.round((current.speed-1)*8)),damageType:"WATER"});return true;}finally{delete unit._currentResolving;}
  }
  function enterTile(unit){const s=state();if(!unit?.alive)return;ctx.stageEvent({type:"ENTER_TILE",unitId:unit.id,characterId:unit.character.id,x:unit.x,y:unit.y,z:Number(unit.z??(TacticalEngine.elevation(TacticalEngine.tile(s.map,unit.x,unit.y))||0)),team:teamLabel(unit.team)});applyEnvironmentHazardToUnit(unit,{reason:"踏入環境區",waterTrigger:"ENTER"});if(unit.alive&&!unit._currentResolving)applyCurrentToUnit(unit,{reason:"溪流"});}
- function traverseUnitPath(unit,path,{kind="UNIT"}={}){const s=state();for(const tile of path||[]){unit.x=tile.x;unit.y=tile.y;unit.z=Number(tile.elevation||0);enterTile(unit);if(!unit.alive)return{completed:false,reason:"DEFEATED"};if(unit.x!==tile.x||unit.y!==tile.y)return{completed:false,reason:"CURRENT"};const interaction=EnvironmentEngine.pathInteraction({state:s.environmentState,x:tile.x,y:tile.y,kind}),forced=interaction.effects?.find(e=>e.type==="FORCED_MOVE");if(forced){applyForcedMovement({x:tile.x,y:tile.y},unit,forced.distance,{name:forced.effect?.type==="FIRE_TORNADO"?"火龍捲":"龍捲風",lift:Number(forced.lift??forced.effect?.lift??0),damage:Number(forced.damage??forced.effect?.damage??0),damageType:forced.effect?.damageType||"PHYSICAL",resistAxes:forced.resistAxes||forced.effect?.resistAxes});return{completed:false,reason:"ENVIRONMENT_FORCE"};}}return{completed:true};}
+ function traverseUnitPath(unit,path,{kind="UNIT"}={}){
+  const s=state();let previous={x:unit.x,y:unit.y};
+  for(const tile of path||[]){
+    const incoming={dx:Math.sign(tile.x-previous.x),dy:Math.sign(tile.y-previous.y)};
+    unit.x=tile.x;unit.y=tile.y;unit.z=Number(tile.elevation||0);enterTile(unit);
+    if(!unit.alive)return{completed:false,reason:"DEFEATED"};
+    if(unit.x!==tile.x||unit.y!==tile.y)return{completed:false,reason:"CURRENT"};
+    const interaction=EnvironmentEngine.pathInteraction({state:s.environmentState,x:tile.x,y:tile.y,kind}),forced=interaction.effects?.find(e=>e.type==="FORCED_MOVE");
+    if(forced){applyForcedMovement({x:tile.x,y:tile.y},unit,forced.distance,{name:forced.effect?.type==="FIRE_TORNADO"?"火龍捲":"龍捲風",lift:Number(forced.lift??forced.effect?.lift??0),damage:Number(forced.damage??forced.effect?.damage??0),damageType:forced.effect?.damageType||"PHYSICAL",resistAxes:forced.resistAxes||forced.effect?.resistAxes});return{completed:false,reason:"ENVIRONMENT_FORCE"};}
+    const friction=Number(window.EnvironmentResolver?.surfaceFriction?.(s.environmentState,tile)??1);
+    const momentum=Math.max(0,1-friction);
+    if(kind==="UNIT"&&momentum>=.5&&(incoming.dx||incoming.dy)){
+      const distance=Math.max(1,Math.min(2,Math.ceil(momentum*2))),source={x:unit.x-incoming.dx,y:unit.y-incoming.dy};
+      ctx.pushLog(`${unit.character.name} 在低摩擦地表失去制動｜摩擦 ${friction.toFixed(2)}｜慣性位移 ${distance}。`,"DETAIL");
+      applyForcedMovement(source,unit,distance,{name:"滑行",damage:0,damageType:"PHYSICAL"});
+      return{completed:false,reason:"SURFACE_MOMENTUM"};
+    }
+    previous={x:tile.x,y:tile.y};
+  }
+  return{completed:true};
+}
 
- function resolveAvalanche(event){
+ function resolveMassFlow(event){
   const s=state(),path=event.path||[],initial=(s.units||[]).filter(u=>u?.alive&&path.some(p=>p.x===u.x&&p.y===u.y));let count=0;
-  for(const unit of initial){if(!unit.alive)continue;const index=Math.max(0,path.findIndex(p=>p.x===unit.x&&p.y===unit.y)),here=path[index],next=path[Math.min(path.length-1,index+1)],dx=Math.sign((next?.x??here.x)-here.x),dy=Math.sign((next?.y??here.y)-here.y),source={x:unit.x-dx,y:unit.y-dy};applyForcedMovement(source,unit,Number(event.forceDistance||1),{name:"雪崩",damage:Number(event.damage||0),damageType:"PHYSICAL"});count++;}
+  const material=event.material||"SNOW",name=material==="SOIL"?"土石流":"雪崩";
+  for(const unit of initial){
+    if(!unit.alive)continue;
+    const index=Math.max(0,path.findIndex(p=>p.x===unit.x&&p.y===unit.y)),here=path[index],next=path[Math.min(path.length-1,index+1)],
+      dx=Math.sign((next?.x??here.x)-here.x),dy=Math.sign((next?.y??here.y)-here.y),source={x:unit.x-dx,y:unit.y-dy};
+    applyForcedMovement(source,unit,Number(event.forceDistance||1),{name,damage:Number(event.damage||0),damageType:"PHYSICAL"});count++;
+  }
   return count;
  }
  function applyEnvironmentHazards({reason="持續環境傷害"}={}){
-  const s=state(),weatherEvents=EnvironmentEngine.advanceHydrology?.(s.map,s.environmentState)||[];weatherEvents.forEach(logEnvironmentEvent);resolveEnvironmentEvents(weatherEvents,{reason:"天候／水文變化"});
+  const s=state(),weatherEvents=EnvironmentEngine.advanceHydrology?.(s.map,s.environmentState)||[];
+  weatherEvents.forEach(logEnvironmentEvent);resolveEnvironmentEvents(weatherEvents,{reason:"天候／環境變化"});
   for(const unit of (s.units||[]).filter(unit=>unit?.alive))applyEnvironmentHazardToUnit(unit,{reason,waterTrigger:"TICK"});
   for(const unit of (s.units||[]).filter(unit=>unit?.alive))applyCurrentToUnit(unit,{reason:"暴漲水流"});
  }
@@ -127,7 +154,8 @@ function create(ctx){
   if(hydrologyChanged)for(const unit of (s.units||[]).filter(unit=>unit?.alive)){const damage=applyEnvironmentHazardToUnit(unit,{reason:"水位／冰面／地形變化",waterTrigger:"CHANGE",includeElectric:false,includeBoiling:false,includeFire:false});if(damage>0)affected++;}
   if(hasElectric)for(const unit of (s.units||[]).filter(unit=>unit?.alive)){const damage=applyEnvironmentHazardToUnit(unit,{reason,waterTrigger:"CHECK",includeElectric:true,includeBoiling:false,includeFire:false});if(damage>0)affected++;}
   if(boilingTiles.size)for(const unit of (s.units||[]).filter(unit=>unit?.alive&&boilingTiles.has(`${unit.x},${unit.y}`))){const damage=applyEnvironmentHazardToUnit(unit,{reason:"水體受高熱影響",waterTrigger:"CHECK",includeElectric:false,includeBoiling:true,includeFire:false});if(damage>0)affected++;}
-  for(const avalanche of list.filter(event=>event.type==="AVALANCHE"))affected+=resolveAvalanche(avalanche);
+  for(const flow of list.filter(event=>event.type==="MASS_FLOW"))affected+=resolveMassFlow(flow);
+  for(const avalanche of list.filter(event=>event.type==="AVALANCHE"))affected+=resolveMassFlow({...avalanche,material:"SNOW"});
   if(list.some(event=>event.type==="RIVER_SURGE")){for(const unit of (s.units||[]).filter(unit=>unit?.alive)){const tile=TacticalEngine.tile(s.map,unit.x,unit.y);if(tile?.river&&applyCurrentToUnit(unit,{reason:"暴漲溪流"}))affected++;}}
   return affected;
  }
@@ -155,6 +183,9 @@ function create(ctx){
   else if(event.type==="FREEZE_PULSE")ctx.pushLog(`🧊 低溫使 ${event.changedTiles||0} 格水面結冰／增厚｜最大冰厚 ${Number(event.maxIce||0).toFixed(2)}。`,"DETAIL");
   else if(event.type==="SNOW_THAW")ctx.pushLog(`融雪｜${event.changedTiles||0} 格積雪減少｜回流水量 ${Number(event.meltVolume||0).toFixed(2)}。`,"DETAIL");
   else if(event.type==="ICE_THAW")ctx.pushLog(`解凍｜${event.changedTiles||0} 格冰面變薄。`,"DETAIL");
+  else if(event.type==="MASS_FLOW")ctx.pushLog(`${event.material==="SOIL"?"⛰️ 土石流":"❄️ 雪崩"}由 (${event.x},${event.y}) 發生｜路徑 ${event.path?.length||0} 格｜質量 ${Number(event.mass||0).toFixed(2)}｜衝擊 ${event.damage||0}。`,"SYSTEM");
+  else if(event.type==="SOIL_FROZEN")ctx.pushLog(`🧊 (${event.x},${event.y}) 含水土壤凍結｜形成凍土。`,"DETAIL");
+  else if(event.type==="SOIL_THAWED")ctx.pushLog(`(${event.x},${event.y}) 凍土解凍｜原有土壤水分保留。`,"DETAIL");
   else if(event.type==="AVALANCHE")ctx.pushLog(`❄️ 雪崩由 (${event.x},${event.y}) 崩落｜路徑 ${event.path?.length||0} 格｜衝擊 ${event.damage||0}。`,"SYSTEM");
  }
  return Object.freeze({resolveCollisionRuntime,applyForcedMovement,traverseUnitPath,applyWaterInteraction,applyEnvironmentHazardToUnit,applyEnvironmentHazards,resolveEnvironmentEvents,applyCurrentToUnit,enterTile,resolveWeatherEvents,logEnvironmentEvent});

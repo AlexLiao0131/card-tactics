@@ -10,8 +10,8 @@ window.HydrologyEngine=(()=>{
   const canHoldWater=t=>!!t&&t.terrain!=="WALL";
   const clean=value=>Math.max(0,Math.round(Number(value||0)*10000)/10000);
   const clamp=(value,min,max)=>Math.max(min,Math.min(max,Number(value||0)));
-  const terrainHasSoil=terrain=>terrain==="PLAIN"||terrain==="MUD"||terrain==="FOREST";
   const soilMoisture=t=>clamp(t?.soilMoisture??(t?.terrain==="MUD"?SOIL_SATURATION_CAPACITY:0),0,SOIL_SATURATION_CAPACITY);
+  const terrainHasSoil=terrain=>terrain==="PLAIN"||terrain==="MUD"||terrain==="FOREST";
   const hasSoil=t=>!!t&&(terrainHasSoil(t.terrain)||(t.terrain==="WATER"&&terrainHasSoil(t.dryTerrain)));
 
   function tileAt(map,x,y){return map?.tiles?.find(t=>t.x===x&&t.y===y)||null}
@@ -253,7 +253,7 @@ window.HydrologyEngine=(()=>{
 
   function applyRain(map,{heavy=false,amount=null,source=null}={}){
     const resolvedAmount=Math.max(0,Number(amount??(heavy?HEAVY_RAIN_FILL_PER_EVENT:RAIN_FILL_PER_EVENT))),events=[];
-    amount=resolvedAmount;const rainSource=source||(heavy?"HEAVY_RAIN":"RAIN");
+    amount=resolvedAmount;const rainSource=source|| (heavy?"HEAVY_RAIN":"RAIN");
     for(const tile of map?.tiles||[]){
       if(!canHoldWater(tile))continue;
       if(isWater(tile)){
@@ -262,8 +262,6 @@ window.HydrologyEngine=(()=>{
         events.push({type:"WATER_ACCUMULATED",x:tile.x,y:tile.y,elevation:elevation(tile),fromDepth:before,waterDepth:tile.waterDepth,waterSurfaceZ:elevation(tile)+tile.waterDepth,source:rainSource});
         continue;
       }
-
-      // Rain falls on every non-wall tile. Soil absorbs first; rock/high ground creates immediate runoff.
       const excess=hasSoil(tile)?saturateSoil(tile,amount,events,rainSource):amount;
       if(excess>EPSILON){
         const before=waterDepth(tile);
@@ -279,8 +277,7 @@ window.HydrologyEngine=(()=>{
     const events=[];
     for(const tile of map?.tiles||[]){
       if(waterDepth(tile)>EPSILON||!hasSoil(tile))continue;
-      const before=soilMoisture(tile);
-      if(before<=EPSILON)continue;
+      const before=soilMoisture(tile);if(before<=EPSILON)continue;
       const next=clean(Math.max(0,before-Math.max(0,Number(amount||0))));
       tile.soilMoisture=next;
       if(Math.abs(next-before)>EPSILON)events.push({type:"SOIL_MOISTURE_CHANGED",x:tile.x,y:tile.y,from:before,to:next,source});
