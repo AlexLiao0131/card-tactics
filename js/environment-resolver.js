@@ -10,6 +10,11 @@ const CFG=Object.freeze({
   SNOW_FAILURE_DEPTH:1.15,
   SNOW_FAILURE_MIN_DROP:1,
   SNOW_FAILURE_BASE_STABILITY:.62,
+  ROCK_FAILURE_MIN_DROP:1,
+  ROCK_FAILURE_DISTURBANCE:.72,
+  ROCK_BASE_COHESION:.78,
+  ROCK_FRACTURE_DECAY:.82,
+  ROCK_MIN_MASS:.45,
   VEGETATION_STABILITY:.24,
   FROZEN_STABILITY:.35,
   DISTURBANCE_DECAY:.45,
@@ -28,6 +33,8 @@ const moistureRatio=t=>Math.min(1,moisture(t)/Math.max(.001,Number(window.Hydrol
 const temperature=(state,tile)=>Number(window.ClimateEngine?.temperatureAt?.(state,tile)??state?.temperature??7);
 const material=t=>String(t?.material||t?.dryTerrain||t?.terrain||"PLAIN");
 const vegetation=t=>material(t)==="FOREST"||Number(t?.vegetation||0)>0;
+const rockMaterial=t=>material(t)==="ROCK"||material(t)==="STONE"||String(t?.terrain||"")==="HIGH_GROUND";
+const rockMass=t=>Math.max(0,Number(t?.rockMass??(rockMaterial(t)?Math.max(.5,elevation(t)*.35):0)));
 const frozenSoil=(state,t)=>temperature(state,t)<=CFG.FREEZE_POINT&&moisture(t)>=CFG.FROZEN_SOIL_MOISTURE&&water(t)<=.001;
 const slopeTo=(a,b)=>elevation(a)-elevation(b);
 function downhill(map,tile,visited=new Set()){
@@ -51,6 +58,8 @@ function ensureTileState(map,state){
     tile.surfaceFriction=surfaceFriction(state,tile);
     tile.frozenSoil=frozenSoil(state,tile);
     tile.slopeStability=stability(state,tile);
+    tile.rockCohesion=rockMaterial(tile)?Math.max(0,Math.min(1,Number(tile.rockCohesion??CFG.ROCK_BASE_COHESION))):0;
+    tile.rockFracture=rockMaterial(tile)?clean(Number(tile.rockFracture||0)*CFG.ROCK_FRACTURE_DECAY):0;
     tile.disturbance=clean(Number(tile.disturbance||0)*CFG.DISTURBANCE_DECAY);
   }
 }
@@ -61,6 +70,7 @@ function massFlowPath(map,start,kind,mass){
     const next=downhill(map,current,visited);if(!next)break;
     current=next.tile;visited.add(key(current.x,current.y));path.push({x:current.x,y:current.y,elevation:elevation(current)});
     if(kind==="SNOW")carried+=Math.min(.45,snow(current)*.3);
+    else if(kind==="ROCK"||kind==="DEBRIS")carried+=Math.min(.55,rockMass(current)*.18);
     else carried+=Math.min(.35,moisture(current)*.35);
   }
   return{path,mass:clean(carried),end:current};
@@ -91,6 +101,26 @@ function resolveSoilFailure(map,state,tile,events){
   if(flow.end.terrain==="PLAIN")flow.end.terrain="MUD";
   events.push({type:"MASS_FLOW",material:"SOIL",x:tile.x,y:tile.y,path:flow.path,mass:flow.mass,erosion,deposit,damage:Math.round(12+flow.mass*20),forceDistance:Math.max(1,Math.min(3,Math.ceil(flow.mass/1.2))),source:"SLOPE_FAILURE"});
 }
+function resolveRockFailure(map,state,tile,events){
+  if(!rockMaterial(tile))return;
+  const next=downhill(map,tile);if(!next||next.drop<CFG.ROCK_FAILURE_MIN_DROP)return;
+  const disturbance=Math.max(0,Number(tile.disturbance||0)),fracture=Math.max(0,Number(tile.rockFracture||0)),
+    cohesion=Math.max(0,Math.min(1,Number(tile.rockCohesion??CFG.ROCK_BASE_COHESION))),
+    load=Math.max(0,disturbance+fracture-cohesion);
+  tile.rockFracture=clean(fracture+disturbance*(.45+Math.min(1,next.drop)*.15));
+  if(disturbance<CFG.ROCK_FAILURE_DISTURBANCE&&load<=0)return;
+  if(tile.rockFracture+disturbance*.35<=cohesion)return;
+  const available=rockMass(tile),released=Math.min(available,Math.max(CFG.ROCK_MIN_MASS,available*(.35+Math.min(.45,disturbance*.18))));
+  if(released<=0)return;
+  const flow=massFlowPath(map,tile,"ROCK",released);if(flow.path.length<2)return;
+  tile.rockMass=clean(Math.max(0,available-released));
+  const erosion=Math.min(.6,flow.mass*.13),deposit=Math.min(.55,flow.mass*.11);
+  tile.elevation=Number((elevation(tile)-erosion).toFixed(3));
+  flow.end.elevation=Number((elevation(flow.end)+deposit).toFixed(3));
+  flow.end.rockMass=clean(rockMass(flow.end)+flow.mass*.62);
+  flow.end.debrisMass=clean(Number(flow.end.debrisMass||0)+flow.mass*.38);
+  events.push({type:"MASS_FLOW",material:"ROCK",x:tile.x,y:tile.y,path:flow.path,mass:flow.mass,erosion,deposit,damage:Math.round(20+flow.mass*24),forceDistance:Math.max(1,Math.min(4,Math.ceil(flow.mass/1.1))),source:"ROCK_FAILURE"});
+}
 function resolve(map,state,{source="ENVIRONMENT_TICK"}={}){
   const events=[];if(!map||!state)return events;ensureTileState(map,state);
   for(const tile of map.tiles||[]){
@@ -101,15 +131,18 @@ function resolve(map,state,{source="ENVIRONMENT_TICK"}={}){
   for(const tile of [...(map.tiles||[])].sort((a,b)=>elevation(b)-elevation(a))){
     resolveSnowFailure(map,state,tile,events);
     resolveSoilFailure(map,state,tile,events);
+    resolveRockFailure(map,state,tile,events);
   }
-  if(events.some(e=>e.type==="MASS_FLOW"&&e.material==="SOIL"))window.HydrologyEngine?.redistribute?.(map,{source:"MASS_FLOW",events});
+  if(events.some(e=>e.type==="MASS_FLOW"&&(e.material==="SOIL"||e.material==="ROCK"||e.material==="DEBRIS")))window.HydrologyEngine?.redistribute?.(map,{source:"MASS_FLOW",events});
   ensureTileState(map,state);
   events.push({type:"ENVIRONMENT_RESOLVED",source,tiles:map.tiles?.length||0,massFlows:events.filter(e=>e.type==="MASS_FLOW").length});
   return events;
 }
 function disturb(map,x,y,amount=1,{source="DISTURBANCE"}={}){
-  const tile=tileAt(map,x,y);if(!tile)return[];tile.disturbance=clean(Number(tile.disturbance||0)+Math.max(0,Number(amount||0)));
-  return[{type:"ENVIRONMENT_DISTURBANCE",x,y,amount:Number(amount||0),source}];
+  const tile=tileAt(map,x,y);if(!tile)return[];const force=Math.max(0,Number(amount||0));
+  tile.disturbance=clean(Number(tile.disturbance||0)+force);
+  if(rockMaterial(tile))tile.rockFracture=clean(Number(tile.rockFracture||0)+force*.38);
+  return[{type:"ENVIRONMENT_DISTURBANCE",x,y,amount:force,source,rockFracture:Number(tile.rockFracture||0)}];
 }
-return Object.freeze({CFG,resolve,disturb,tileAt,temperature,frozenSoil,surfaceFriction,stability,downhill});
+return Object.freeze({CFG,resolve,disturb,tileAt,temperature,frozenSoil,surfaceFriction,stability,downhill,rockMaterial,rockMass});
 })();

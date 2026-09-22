@@ -180,6 +180,99 @@ window.MapGenerator=(()=>{
     for(const t of candidates){if(count>=target)break;if(rand()<.32){t.terrain="FOREST";count++;}}
   }
 
+
+  function reachableTiles(map,objects,start){
+    const seen=new Set(),q=[{x:start.x,y:start.y}];seen.add(key(start.x,start.y));
+    while(q.length){
+      const p=q.shift(),from=tileAt(map,p.x,p.y);
+      for(const[dx,dy]of DIRS){
+        const x=p.x+dx,y=p.y+dy,k=key(x,y);if(seen.has(k))continue;
+        const to=tileAt(map,x,y);if(!normalPassable(map,objects,from,to))continue;
+        seen.add(k);q.push({x,y});
+      }
+    }
+    return seen;
+  }
+
+  function highGroundComponents(map){
+    const candidates=new Set(map.tiles.filter(t=>Number(t.elevation||0)>=2&&Number(t.waterDepth||0)<=0).map(t=>key(t.x,t.y))),out=[];
+    while(candidates.size){
+      const first=candidates.values().next().value,[sx,sy]=first.split(",").map(Number),q=[tileAt(map,sx,sy)],component=[];candidates.delete(first);
+      while(q.length){
+        const t=q.shift();if(!t)continue;component.push(t);
+        for(const[dx,dy]of DIRS){
+          const k=key(t.x+dx,t.y+dy);if(!candidates.has(k))continue;
+          candidates.delete(k);q.push(tileAt(map,t.x+dx,t.y+dy));
+        }
+      }
+      out.push(component);
+    }
+    return out;
+  }
+
+  function rampSearch(map,start,reachable,protectedKeys){
+    const startHeight=movementHeight(start),need=Math.max(1,Math.ceil(startHeight));
+    const q=[{x:start.x,y:start.y,path:[start]}],seen=new Set([key(start.x,start.y)]);
+    while(q.length){
+      const cur=q.shift(),last=cur.path[cur.path.length-1];
+      for(const[dx,dy]of DIRS){
+        const n=tileAt(map,last.x+dx,last.y+dy);if(!n)continue;
+        const k=key(n.x,n.y);if(seen.has(k))continue;
+        const path=[...cur.path,n];
+        if(reachable.has(k)&&path.length-1>=Math.max(1,Math.ceil(startHeight-movementHeight(n))))return path;
+        if(n.river||n.captureZone||protectedKeys.has(k))continue;
+        seen.add(k);
+        if(path.length<=need+Math.max(5,Math.ceil(Math.sqrt(map.tiles.length)/2)))q.push({x:n.x,y:n.y,path});
+      }
+    }
+    return null;
+  }
+
+  function carveMountainRamp(path,protectedKeys,rampIndex){
+    if(!path||path.length<2)return 0;
+    const top=path[0],bottom=path[path.length-1],topH=movementHeight(top),bottomH=movementHeight(bottom),steps=path.length-1;
+    let changed=0;
+    for(let i=1;i<path.length-1;i++){
+      const t=path[i];
+      const desired=Math.max(bottomH,topH-i);
+      if(Math.abs(Number(t.elevation||0)-desired)>.0001||Number(t.waterDepth||0)>0){
+        setDry(t,desired,desired>=2?"HIGH_GROUND":"PLAIN");changed++;
+      }
+      t.mountainRamp=true;t.rampId=`mountain_ramp_${rampIndex}`;protectedKeys.add(key(t.x,t.y));
+    }
+    top.mountainRamp=true;top.rampId=`mountain_ramp_${rampIndex}`;
+    return changed;
+  }
+
+  function ensureMountainAccessibility(map,protectedKeys,baseInfo){
+    const report={ramps:0,changedTiles:0,connectedComponents:0,remainingInaccessible:0};
+    let guard=0;
+    while(guard++<map.tiles.length){
+      const reachable=reachableTiles(map,[],baseInfo.playerCore);
+      const components=highGroundComponents(map).filter(component=>component.some(t=>!reachable.has(key(t.x,t.y))));
+      if(!components.length)break;
+      let connected=false;
+      components.sort((a,b)=>b.length-a.length);
+      for(const component of components){
+        const unreachable=component.filter(t=>!reachable.has(key(t.x,t.y)));
+        const edges=unreachable.filter(t=>DIRS.some(([dx,dy])=>!component.some(c=>c.x===t.x+dx&&c.y===t.y+dy)))
+          .sort((a,b)=>movementHeight(a)-movementHeight(b));
+        let best=null;
+        for(const edge of edges){
+          const path=rampSearch(map,edge,reachable,protectedKeys);
+          if(path&&(!best||path.length<best.length))best=path;
+        }
+        if(!best)continue;
+        report.changedTiles+=carveMountainRamp(best,protectedKeys,report.ramps);
+        report.ramps++;report.connectedComponents++;connected=true;break;
+      }
+      if(!connected)break;
+    }
+    const finalReachable=reachableTiles(map,[],baseInfo.playerCore);
+    report.remainingInaccessible=highGroundComponents(map).filter(component=>!component.some(t=>finalReachable.has(key(t.x,t.y)))).length;
+    return report;
+  }
+
   function addRocks(map,cfg,rand,protectedKeys){
     const candidates=map.tiles.filter(t=>!protectedKeys.has(key(t.x,t.y))&&!t.river&&t.terrain==="HIGH_GROUND"&&t.waterDepth<=0),objects=[];
     for(let i=0;i<cfg.rocks&&candidates.length;i++){const n=Math.floor(rand()*candidates.length),t=candidates.splice(n,1)[0];objects.push({id:`generated_rock_${i}`,x:t.x,y:t.y,type:"ROCK",environment:"STONE",destructible:true,blocksMovement:true,breaksIntoTerrain:"PLAIN"});}
@@ -220,7 +313,9 @@ window.MapGenerator=(()=>{
     const protectedKeys=new Set(),baseInfo=carveBaseZones(map,protectedKeys),ys=routeYs(map),routes=ys.map((y,i)=>carveStrategicRoute(map,y,i,protectedKeys,rand));
     connectRoutesToBases(map,routes,baseInfo,protectedKeys);
     const capturePoints=createCapturePoints(map,routes,protectedKeys),river=createRiver(map,routes,protectedKeys,rand);
-    addForests(map,cfg,rand,protectedKeys);const rocks=addRocks(map,cfg,rand,protectedKeys);
+    addForests(map,cfg,rand,protectedKeys);
+    const mountainAccess=ensureMountainAccessibility(map,protectedKeys,baseInfo);
+    const rocks=addRocks(map,cfg,rand,protectedKeys);
 
     const hp=Math.max(1,Number(coreRules.hp??600)),shield=Math.max(0,Number(coreRules.shield??0)),defense=Math.max(0,Number(coreRules.defense??0));
     const cores=[
@@ -233,7 +328,7 @@ window.MapGenerator=(()=>{
     const validation=validateBattlefield(map,rocks,cores,capturePoints,routes,river);
     if(!validation.ok)throw new Error(`Generated battlefield validation failed: ${validation.errors.join(",")}`);
     const summary=stats(map);
-    return{map,cores,deploymentPoints,meta:{generated:true,seed:resolvedSeed,size:cfg.id,label:cfg.label,width:map.width,height:map.height,routes:routes.length,riverCrossings:river.crossings.length,validation:"PASS",...summary}};
+    return{map,cores,deploymentPoints,meta:{generated:true,seed:resolvedSeed,size:cfg.id,label:cfg.label,width:map.width,height:map.height,routes:routes.length,riverCrossings:river.crossings.length,mountainRamps:mountainAccess.ramps,mountainRampTiles:mountainAccess.changedTiles,inaccessibleHighGround:mountainAccess.remainingInaccessible,validation:"PASS",...summary}};
   }
 
   return Object.freeze({SIZE_PRESETS,preset,randomSeed,generateVersus,validateBattlefield});

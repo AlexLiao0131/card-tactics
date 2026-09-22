@@ -132,7 +132,7 @@ function create(ctx){
 
  function resolveMassFlow(event){
   const s=state(),path=event.path||[],initial=(s.units||[]).filter(u=>u?.alive&&path.some(p=>p.x===u.x&&p.y===u.y));let count=0;
-  const material=event.material||"SNOW",name=material==="SOIL"?"土石流":"雪崩";
+  const material=event.material||"SNOW",name=material==="SOIL"?"土石流":(material==="ROCK"||material==="DEBRIS")?"山崩／落石":"雪崩";
   for(const unit of initial){
     if(!unit.alive)continue;
     const index=Math.max(0,path.findIndex(p=>p.x===unit.x&&p.y===unit.y)),here=path[index],next=path[Math.min(path.length-1,index+1)],
@@ -183,7 +183,7 @@ function create(ctx){
   else if(event.type==="FREEZE_PULSE")ctx.pushLog(`🧊 低溫使 ${event.changedTiles||0} 格水面結冰／增厚｜最大冰厚 ${Number(event.maxIce||0).toFixed(2)}。`,"DETAIL");
   else if(event.type==="SNOW_THAW")ctx.pushLog(`融雪｜${event.changedTiles||0} 格積雪減少｜回流水量 ${Number(event.meltVolume||0).toFixed(2)}。`,"DETAIL");
   else if(event.type==="ICE_THAW")ctx.pushLog(`解凍｜${event.changedTiles||0} 格冰面變薄。`,"DETAIL");
-  else if(event.type==="MASS_FLOW")ctx.pushLog(`${event.material==="SOIL"?"⛰️ 土石流":"❄️ 雪崩"}由 (${event.x},${event.y}) 發生｜路徑 ${event.path?.length||0} 格｜質量 ${Number(event.mass||0).toFixed(2)}｜衝擊 ${event.damage||0}。`,"SYSTEM");
+  else if(event.type==="MASS_FLOW"){const label=event.material==="SOIL"?"⛰️ 土石流":(event.material==="ROCK"||event.material==="DEBRIS")?"🪨 山崩／落石":"❄️ 雪崩";ctx.pushLog(`${label}由 (${event.x},${event.y}) 發生｜路徑 ${event.path?.length||0} 格｜質量 ${Number(event.mass||0).toFixed(2)}｜衝擊 ${event.damage||0}。`,"SYSTEM");}
   else if(event.type==="SOIL_FROZEN")ctx.pushLog(`🧊 (${event.x},${event.y}) 含水土壤凍結｜形成凍土。`,"DETAIL");
   else if(event.type==="SOIL_THAWED")ctx.pushLog(`(${event.x},${event.y}) 凍土解凍｜原有土壤水分保留。`,"DETAIL");
   else if(event.type==="AVALANCHE")ctx.pushLog(`❄️ 雪崩由 (${event.x},${event.y}) 崩落｜路徑 ${event.path?.length||0} 格｜衝擊 ${event.damage||0}。`,"SYSTEM");
