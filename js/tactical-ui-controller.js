@@ -148,7 +148,7 @@
     if(!data)return;
 
     panel.querySelector(".battle-context-unit-name").textContent=data.name;
-    panel.querySelector(".battle-context-hp-text").textContent=`HP ${data.hp}/${data.maxHp}｜MOVE ${data.move}`;
+    panel.querySelector(".battle-context-hp-text").textContent=`HP ${data.hp}/${data.maxHp}｜MP ${data.mana??0}/${data.maxMana??0}｜MOVE ${data.move}`;
     panel.querySelector(".battle-context-hp i").style.width=`${Math.max(0,Math.min(100,data.hp/Math.max(1,data.maxHp)*100))}%`;
 
     const s=data.stats||{};

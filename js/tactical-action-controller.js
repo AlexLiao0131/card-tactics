@@ -193,7 +193,8 @@
         const b=skill.bloodAction;
         const drain=EffectEngine.apply({source:attacker,target,effect:{type:"DRAIN",amount:b.damage,healRatio:b.healRatio}});results.push(drain);
         EffectEngine.apply({source:attacker,target:attacker,effect:{type:"ATTRIBUTE_OVERRIDE",id:"BLOOD_GENOME_RESTORATION",classification:"POSITIVE",duration:b.duration,values:b.restoresGenome}});
-        ctx.pushLog(`${attacker.character.name} 吸取 ${target.character.name} 的血｜${drain.damage||0} 傷害｜自癒 ${drain.healed||0} HP｜暫時恢復 5V。`,"BATTLE");
+        const manaRestore=EffectEngine.apply({source:attacker,target:attacker,effect:{type:"RESTORE_MANA",amount:Math.round(Number(drain.damage||0)*Number(b.manaRatio||0))}});results.push(manaRestore);
+        ctx.pushLog(`${attacker.character.name} 吸取 ${target.character.name} 的血｜${drain.damage||0} 傷害｜自癒 ${drain.healed||0} HP｜回復 ${manaRestore.amount||0} MP｜暫時恢復 5V。`,"BATTLE");
         if(!target.alive)ctx.handleDefeated(target,attacker,skill);
         if(b.copySkill){
           const options=EffectEngine.copyableSkills(target);

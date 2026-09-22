@@ -4,7 +4,7 @@
   });
   Object.assign(SKILLS,{
     seraphina_rending_claw:{id:"seraphina_rending_claw",name:"裂血爪",category:"ATTACK",weapon:"claw",power:1.15,range:{min:1,max:1},attackType:"SLASH",element:"DARK",speed:10,target:"ENEMY",support:false,resource:{type:"UNLIMITED"}},
-    seraphina_blood_drain:{id:"seraphina_blood_drain",name:"吸血",category:"SPECIAL",power:0,range:{min:1,max:1},target:"ALLY_OR_ENEMY",support:false,resource:{type:"USES",max:3},bloodAction:{damage:45,healRatio:1,restoresGenome:{str:20,agi:20,int:20,wil:20,vit:20,luk:20},duration:3,copySkill:true,copyDuration:3}},
+    seraphina_blood_drain:{id:"seraphina_blood_drain",name:"吸血",category:"SPECIAL",power:0,range:{min:1,max:1},target:"ALLY_OR_ENEMY",support:false,resource:{type:"USES",max:3},bloodAction:{damage:45,healRatio:1,manaRatio:.5,restoresGenome:{str:20,agi:20,int:20,wil:20,vit:20,luk:20},duration:3,copySkill:true,copyDuration:3}},
     seraphina_blood_burst:{id:"seraphina_blood_burst",name:"血爆",category:"ATTACK",weapon:"claw",power:1.4,range:{min:1,max:1},attackType:"SLASH",element:"DARK",speed:5,target:"ENEMY",support:false,resource:{type:"USES",max:2}},
     seraphina_regeneration:{id:"seraphina_regeneration",name:"血之再生",category:"SPECIAL",power:0,range:{min:0,max:0},target:"SELF",support:false,resource:{type:"USES",max:2},effects:[{type:"HEAL",amount:80}]}
   });

@@ -43,6 +43,7 @@ window.EffectEngine=(()=>{
     }
     unit.character.modifiers.damageTakenMultiplier=damageTakenMultiplier;
     unit.character.modifiers.guardMultiplier=guardMultiplier;
+    window.UnitRuntimeEngine?.syncMana?.(unit);
   }
   function addEffect(target,effect,source){
     const entry={...clone(effect),sourceUnitId:source?.id||null,remaining:Number(effect.duration||0)||null};
@@ -70,6 +71,7 @@ window.EffectEngine=(()=>{
     if(!target||!effect)return{applied:false,reason:"INVALID_TARGET"};
     if(effect.targetFilter&&!targetMatches(source,target,effect.targetFilter))return{applied:false,reason:"TARGET_FILTER"};
     if(effect.type==="HEAL")return{applied:true,type:effect.type,amount:heal(target,effect.amount)};
+    if(effect.type==="RESTORE_MANA"){const amount=window.UnitRuntimeEngine?.restoreMana?.(target,effect.amount)||0;return{applied:true,type:effect.type,amount,mana:target.mana,maxMana:target.maxMana};}
     if(effect.type==="MAGIC_DAMAGE"||effect.type==="DAMAGE"){let m=1;for(const [trait,value] of Object.entries(effect.traitMultipliers||{}))if(hasTrait(target,trait))m*=Number(value||1);const amount=damage(target,Number(effect.amount||0)*m);return{applied:true,type:effect.type,amount,multiplier:m};}
     if(effect.type==="DISPEL")return{applied:true,type:effect.type,removed:removeNegative(target)};
     if(effect.type==="BUFF"||effect.type==="ATTRIBUTE_OVERRIDE"||effect.type==="ATTRIBUTE_MODIFIER")return{applied:true,type:effect.type,effect:addEffect(target,effect,source)};

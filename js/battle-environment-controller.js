@@ -13,9 +13,9 @@ function assess(unit,tile){
   if(set.has("WATER_WALK"))return{state:STATE.WATER_WALK,depth,weight,safe:true};
   if(window.ClimateEngine?.isFrozen?.(tile)&&ClimateEngine.iceSupports(unit,tile))return{state:STATE.ICE,depth,weight,safe:true,iceThickness:ClimateEngine.iceThickness(tile)};
   const threshold=Number(SINK_DEPTH[weight]??SINK_DEPTH.LIGHT);
-  if(depth>=threshold)return{state:STATE.SINKING,depth,weight,threshold,safe:false};
-  if(depth>=2)return{state:STATE.SWIMMING,depth,weight,threshold,safe:true};
-  return{state:STATE.WADING,depth,weight,threshold,safe:true};
+  if(depth<2)return{state:STATE.WADING,depth,weight,threshold,safe:true};
+  if(set.has("SWIMMER"))return{state:STATE.SWIMMING,depth,weight,threshold,safe:true};
+  return{state:STATE.SINKING,depth,weight,threshold,safe:false};
 }
 function resolve(unit,tile,{trigger="CHECK"}={}){
   const previous=unit?.waterInteraction||{state:STATE.DRY,depth:0,weight:weightClass(unit)},set=traits(unit);let ice=null;
@@ -51,7 +51,8 @@ function create(ctx){
   if(result.ice?.broke)ctx.pushLog(`${unit.character.name} 踩裂冰面｜冰厚 ${Number(result.ice.thickness||0).toFixed(2)} < ${result.ice.weight} 所需 ${Number(result.ice.threshold||0).toFixed(2)}。`,"BATTLE");
   if(result.changed){
     if(result.state===WaterInteractionEngine.STATE.ICE)ctx.pushLog(`${unit.character.name} 踏上結冰水面｜冰厚 ${Number(result.iceThickness||0).toFixed(2)}。`,"DETAIL");
-    else if(result.state===WaterInteractionEngine.STATE.SINKING)ctx.pushLog(`${unit.character.name} ${reason}｜水深 ${Number(result.depth).toFixed(2)}｜重量 ${result.weight}｜失去浮力，開始沉沒。`,"BATTLE");
+    else if(result.state===WaterInteractionEngine.STATE.SWIMMING)ctx.pushLog(`${unit.character.name} ${reason}｜水深 ${Number(result.depth).toFixed(2)}｜具備游泳能力，進入游泳狀態。`,"DETAIL");
+    else if(result.state===WaterInteractionEngine.STATE.SINKING)ctx.pushLog(`${unit.character.name} ${reason}｜水深 ${Number(result.depth).toFixed(2)}｜不具備游泳能力，開始沉沒。`,"BATTLE");
     else if(result.previousState===WaterInteractionEngine.STATE.SINKING)ctx.pushLog(`${unit.character.name} ${reason}｜脫離沉沒狀態。`,"DETAIL");
   }
   if(result.damage>0&&unit.alive){unit.hp=Math.max(0,unit.hp-result.damage);const label=trigger==="TICK"?"溺水／沉沒持續傷害":"沉沒衝擊傷害";ctx.pushLog(`${unit.character.name}｜${label} ${Math.round(result.damage)}｜HP ${unit.hp}。`,"BATTLE");if(unit.hp<=0){unit.alive=false;ctx.pushLog(`${unit.character.name} 因沉沒／溺水戰敗。`,"BATTLE");ctx.handleDefeated(unit,null,{type:"WATER_HAZARD",state:result.state,depth:result.depth,weight:result.weight,trigger});}}
