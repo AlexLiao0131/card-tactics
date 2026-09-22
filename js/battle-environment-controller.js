@@ -1,33 +1,67 @@
 window.WaterInteractionEngine=(()=>{
 "use strict";
 const STATE=Object.freeze({DRY:"DRY",ICE:"ICE",WATER_WALK:"WATER_WALK",AQUATIC:"AQUATIC",WADING:"WADING",SWIMMING:"SWIMMING",SINKING:"SINKING"});
-const SINK_DEPTH=Object.freeze({LIGHT:3,MEDIUM:2,HEAVY:1,IMMOVABLE:1});
+const FATIGUE_LIMIT=6;
+const FATIGUE_GAIN=Object.freeze({LIGHT:.5,MEDIUM:1,HEAVY:2,IMMOVABLE:3});
+const FATIGUE_RECOVERY_PER_TICK=2;
 const ENTRY_DAMAGE=Object.freeze({LIGHT:10,MEDIUM:15,HEAVY:20,IMMOVABLE:30});
 const TICK_DAMAGE=Object.freeze({LIGHT:20,MEDIUM:25,HEAVY:30,IMMOVABLE:40});
 function traits(unit){return new Set(unit?.character?.terrainTraits||[])}
 function weightClass(unit){return window.DisplacementEngine?.weightClass?.(unit)||"LIGHT"}
-function assess(unit,tile){
+function currentFatigue(unit){return Math.max(0,Number(unit?.waterInteraction?.fatigue||0))}
+function baseState(unit,tile,fatigue=currentFatigue(unit)){
   const depth=Math.max(0,Number(window.HydrologyEngine?.waterDepth?.(tile)||0)),set=traits(unit),weight=weightClass(unit);
-  if(depth<=0)return{state:STATE.DRY,depth,weight,safe:true};
-  if(set.has("AQUATIC"))return{state:STATE.AQUATIC,depth,weight,safe:true};
-  if(set.has("WATER_WALK"))return{state:STATE.WATER_WALK,depth,weight,safe:true};
-  if(window.ClimateEngine?.isFrozen?.(tile)&&ClimateEngine.iceSupports(unit,tile))return{state:STATE.ICE,depth,weight,safe:true,iceThickness:ClimateEngine.iceThickness(tile)};
-  const threshold=Number(SINK_DEPTH[weight]??SINK_DEPTH.LIGHT);
-  if(depth<2)return{state:STATE.WADING,depth,weight,threshold,safe:true};
-  if(set.has("SWIMMER"))return{state:STATE.SWIMMING,depth,weight,threshold,safe:true};
-  return{state:STATE.SINKING,depth,weight,threshold,safe:false};
+  if(depth<=0)return{state:STATE.DRY,depth,weight,safe:true,fatigue};
+  if(set.has("AQUATIC"))return{state:STATE.AQUATIC,depth,weight,safe:true,fatigue};
+  if(set.has("WATER_WALK"))return{state:STATE.WATER_WALK,depth,weight,safe:true,fatigue};
+  if(window.ClimateEngine?.isFrozen?.(tile)&&ClimateEngine.iceSupports(unit,tile))return{state:STATE.ICE,depth,weight,safe:true,iceThickness:ClimateEngine.iceThickness(tile),fatigue};
+  if(depth<2)return{state:STATE.WADING,depth,weight,safe:true,fatigue};
+  if(fatigue>=FATIGUE_LIMIT)return{state:STATE.SINKING,depth,weight,safe:false,fatigue};
+  return{state:STATE.SWIMMING,depth,weight,safe:true,fatigue};
 }
+function assess(unit,tile){return baseState(unit,tile)}
 function resolve(unit,tile,{trigger="CHECK"}={}){
-  const previous=unit?.waterInteraction||{state:STATE.DRY,depth:0,weight:weightClass(unit)},set=traits(unit);let ice=null;
+  const previous=unit?.waterInteraction||{state:STATE.DRY,depth:0,weight:weightClass(unit),fatigue:0},set=traits(unit);let ice=null;
   if(tile&&window.ClimateEngine?.isFrozen?.(tile)&&!set.has("AQUATIC")&&!set.has("WATER_WALK")&&!ClimateEngine.iceSupports(unit,tile))ice=ClimateEngine.resolveIceStep(unit,tile);
-  const next=assess(unit,tile),changed=previous.state!==next.state||Math.abs(Number(previous.depth||0)-Number(next.depth||0))>0.0001||previous.weight!==next.weight;let damage=0;
-  if(next.state===STATE.SINKING){
-    if(trigger==="TICK")damage=Number(TICK_DAMAGE[next.weight]??TICK_DAMAGE.LIGHT)+Math.max(0,next.depth-next.threshold)*5;
-    else if(trigger==="ENTER"||trigger==="CHANGE"){const newlySinking=previous.state!==STATE.SINKING,becameDeeper=Number(next.depth||0)>Number(previous.depth||0)+0.0001;if(newlySinking||becameDeeper||ice?.broke)damage=Number(ENTRY_DAMAGE[next.weight]??ENTRY_DAMAGE.LIGHT)+Math.max(0,next.depth-next.threshold)*5;}
+
+  const preliminary=baseState(unit,tile,currentFatigue(unit));
+  let fatigue=currentFatigue(unit);
+
+  if(trigger==="TICK"){
+    if(preliminary.state===STATE.SWIMMING||preliminary.state===STATE.SINKING){
+      fatigue=Math.min(FATIGUE_LIMIT,fatigue+Number(FATIGUE_GAIN[preliminary.weight]??FATIGUE_GAIN.LIGHT));
+    }else{
+      fatigue=Math.max(0,fatigue-FATIGUE_RECOVERY_PER_TICK);
+    }
   }
-  if(unit)unit.waterInteraction={...next};return{...next,previousState:previous.state,previousDepth:Number(previous.depth||0),changed,damage,trigger,ice};
+
+  const next=baseState(unit,tile,fatigue);
+  const changed=previous.state!==next.state||
+    Math.abs(Number(previous.depth||0)-Number(next.depth||0))>0.0001||
+    previous.weight!==next.weight||
+    Math.abs(Number(previous.fatigue||0)-Number(next.fatigue||0))>0.0001;
+
+  let damage=0;
+  if(next.state===STATE.SINKING){
+    if(trigger==="TICK")damage=Number(TICK_DAMAGE[next.weight]??TICK_DAMAGE.LIGHT);
+    else if(trigger==="ENTER"||trigger==="CHANGE"){
+      const newlySinking=previous.state!==STATE.SINKING;
+      if(newlySinking||ice?.broke)damage=Number(ENTRY_DAMAGE[next.weight]??ENTRY_DAMAGE.LIGHT);
+    }
+  }
+
+  if(unit)unit.waterInteraction={...next};
+  return{
+    ...next,
+    fatigueLimit:FATIGUE_LIMIT,
+    fatigueGain:Number(FATIGUE_GAIN[next.weight]??FATIGUE_GAIN.LIGHT),
+    previousState:previous.state,
+    previousDepth:Number(previous.depth||0),
+    previousFatigue:Number(previous.fatigue||0),
+    changed,damage,trigger,ice
+  };
 }
-return Object.freeze({STATE,SINK_DEPTH,ENTRY_DAMAGE,TICK_DAMAGE,assess,resolve});
+return Object.freeze({STATE,FATIGUE_LIMIT,FATIGUE_GAIN,FATIGUE_RECOVERY_PER_TICK,ENTRY_DAMAGE,TICK_DAMAGE,assess,resolve});
 })();
 
 (()=>{
@@ -51,11 +85,11 @@ function create(ctx){
   if(result.ice?.broke)ctx.pushLog(`${unit.character.name} 踩裂冰面｜冰厚 ${Number(result.ice.thickness||0).toFixed(2)} < ${result.ice.weight} 所需 ${Number(result.ice.threshold||0).toFixed(2)}。`,"BATTLE");
   if(result.changed){
     if(result.state===WaterInteractionEngine.STATE.ICE)ctx.pushLog(`${unit.character.name} 踏上結冰水面｜冰厚 ${Number(result.iceThickness||0).toFixed(2)}。`,"DETAIL");
-    else if(result.state===WaterInteractionEngine.STATE.SWIMMING)ctx.pushLog(`${unit.character.name} ${reason}｜水深 ${Number(result.depth).toFixed(2)}｜具備游泳能力，進入游泳狀態。`,"DETAIL");
-    else if(result.state===WaterInteractionEngine.STATE.SINKING)ctx.pushLog(`${unit.character.name} ${reason}｜水深 ${Number(result.depth).toFixed(2)}｜不具備游泳能力，開始沉沒。`,"BATTLE");
+    else if(result.state===WaterInteractionEngine.STATE.SWIMMING)ctx.pushLog(`${unit.character.name} ${reason}｜游泳疲勞 ${Number(result.fatigue).toFixed(1)}/${result.fatigueLimit}｜重量 ${result.weight}。`,"DETAIL");
+    else if(result.state===WaterInteractionEngine.STATE.SINKING)ctx.pushLog(`${unit.character.name} ${reason}｜游泳疲勞 ${Number(result.fatigue).toFixed(1)}/${result.fatigueLimit}｜體力耗盡，開始沉沒。`,"BATTLE");
     else if(result.previousState===WaterInteractionEngine.STATE.SINKING)ctx.pushLog(`${unit.character.name} ${reason}｜脫離沉沒狀態。`,"DETAIL");
   }
-  if(result.damage>0&&unit.alive){unit.hp=Math.max(0,unit.hp-result.damage);const label=trigger==="TICK"?"溺水／沉沒持續傷害":"沉沒衝擊傷害";ctx.pushLog(`${unit.character.name}｜${label} ${Math.round(result.damage)}｜HP ${unit.hp}。`,"BATTLE");if(unit.hp<=0){unit.alive=false;ctx.pushLog(`${unit.character.name} 因沉沒／溺水戰敗。`,"BATTLE");ctx.handleDefeated(unit,null,{type:"WATER_HAZARD",state:result.state,depth:result.depth,weight:result.weight,trigger});}}
+  if(result.damage>0&&unit.alive){unit.hp=Math.max(0,unit.hp-result.damage);const label=trigger==="TICK"?"溺水／沉沒持續傷害":"沉沒衝擊傷害";ctx.pushLog(`${unit.character.name}｜${label} ${Math.round(result.damage)}｜HP ${unit.hp}。`,"BATTLE");if(unit.hp<=0){unit.alive=false;ctx.pushLog(`${unit.character.name} 因沉沒／溺水戰敗。`,"BATTLE");ctx.handleDefeated(unit,null,{type:"WATER_HAZARD",state:result.state,depth:result.depth,weight:result.weight,fatigue:result.fatigue,trigger});}}
   return result;
  }
  function applyElectricHazard(unit,effects,reason){const electric=effects.find(effect=>effect.type===EnvironmentEngine.EFFECT.ELECTRIFIED);if(!electric||!unit?.alive)return 0;const hitIds=Array.isArray(electric.damagedUnitIds)?electric.damagedUnitIds:(electric.damagedUnitIds=[]);if(hitIds.includes(String(unit.id)))return 0;hitIds.push(String(unit.id));const damage=Math.max(0,Number(electric.damage||EnvironmentEngine.HAZARD?.ELECTRIC_DAMAGE||0));if(damage<=0)return 0;unit.hp=Math.max(0,unit.hp-damage);ctx.pushLog(`${unit.character.name} ${reason}｜水體雷電傳導 ${damage} 傷害｜HP ${unit.hp}。`,"BATTLE");if(unit.hp<=0&&unit.alive){unit.alive=false;ctx.pushLog(`${unit.character.name} 被水體雷電傳導擊倒。`,"BATTLE");ctx.handleDefeated(unit,null,{type:"ELECTRIFIED",source:"ENVIRONMENT",origin:electric.origin||null});}return damage;}
