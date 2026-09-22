@@ -20,6 +20,15 @@ function waterStyle(t){
 }
 function shade(c,f){c=Number(c||0);const q=n=>Math.max(0,Math.min(255,Math.round(n*f)));return(q((c>>16)&255)<<16)|(q((c>>8)&255)<<8)|q(c&255)}
 function teamFill(team){return team==="PLAYER"?0x2d67a7:team==="NEUTRAL"?0x8a7443:0xa74444}
+function bounds(s){let a=Infinity,b=-Infinity,c=Infinity,d=-Infinity;for(const t of s.map.tiles)for(const p of corners(point(t.x,t.y,surfaceElevation(t),s.map))){a=Math.min(a,p.x);b=Math.max(b,p.x);c=Math.min(c,p.y);d=Math.max(d,p.y)}return{minX:a,maxX:b,minY:c-110,maxY:d,width:b-a,height:d-(c-110)}}
+function norm(s){const b=bounds(s);return{b,ox:C.pad-b.minX,oy:C.pad-b.minY,w:b.width+C.pad*2,h:b.height+C.pad*2}}
+function surfaceElevation(t){
+  if(t?.waterSurfaceZ!=null&&Number.isFinite(Number(t.waterSurfaceZ)))return Number(t.waterSurfaceZ);
+  const z=window.HydrologyEngine?.waterSurfaceZ?.(t);
+  return z==null?Number(t?.elevation||0):Number(z);
+}
+function surfaceTile(t){return{...t,elevation:surfaceElevation(t)}}
+function wp(s,t,n){const p=point(t.x,t.y,t.elevation,s.map);return{x:p.x+n.ox,y:p.y+n.oy}}
 function resolveVisualCandidate(obj,keys){if(!obj)return null;for(const k of keys){const path=String(k).split(".");let cur=obj;for(const seg of path){cur=cur?.[seg];if(cur==null)break;}if(typeof cur==="string"&&cur)return cur}return null}
 function resolveCharacterVisual(characterId,kind){const c=window.CHARACTERS?.[characterId]||null;const variants=kind==="tactical"?["tactical","art.tactical","visual.tactical","assets.tactical","sprites.tactical","token","image"]:kind==="card"?["card","art.card","visual.card","assets.card","portrait","art.portrait","visual.portrait","assets.portrait","image"]:["portrait","art.portrait","visual.portrait","assets.portrait","card","art.card","visual.card","assets.card","image"];return resolveVisualCandidate(c,variants)}
 function resolveCardVisual(card,kind){if(!card)return null;const selfVariants=kind==="card"?["card","art.card","visual.card","assets.card","image","portrait"]:["portrait","art.portrait","visual.portrait","assets.portrait","image","card"];return resolveVisualCandidate(card,selfVariants)||resolveCharacterVisual(card.characterId,kind)}
